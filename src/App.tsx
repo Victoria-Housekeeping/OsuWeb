@@ -244,14 +244,19 @@ export default function App() {
     audioCtxRef.current = actx;
     if (buffer) {
       setTrianglesBuffer(buffer);
-      if (runningSource && runningGain) {
-        bgmSourceRef.current = runningSource;
-        bgmGainRef.current = runningGain;
-        currentBgmIdRef.current = 'triangles';
-      } else {
-        playBgm('triangles', buffer, settings.volume * 0.45);
+    }
+    
+    // Stop the running intro background music source completely as requested
+    if (runningSource) {
+      try {
+        runningSource.stop();
+        runningSource.disconnect();
+      } catch (err) {
+        console.warn('Failed to stop running intro source:', err);
       }
     }
+    
+    stopBgm();
     setView('selector');
   };
 
