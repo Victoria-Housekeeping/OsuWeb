@@ -359,10 +359,19 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
   };
 
   const toggleSettingBool = (key: keyof GameSettings) => {
-    onUpdateSettings({
-      ...settings,
-      [key]: !settings[key]
-    });
+    const nextVal = !settings[key];
+    const nextSettings = { ...settings, [key]: nextVal };
+    
+    // When disabling screen clicks, we MUST force keyboard control to true
+    if (key === 'disableClicking' && nextVal) {
+      nextSettings.useKeyboard = true;
+    }
+    // Prevent turning off keyboard controls when screen clicking is deactivated
+    if (key === 'useKeyboard' && !nextVal && settings.disableClicking) {
+      return;
+    }
+
+    onUpdateSettings(nextSettings);
   };
 
   const updateSettingNum = (key: keyof GameSettings, val: number) => {
@@ -839,15 +848,37 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     AT
                   </button>
                   <button 
-                    onClick={() => onUpdateSettings({ ...settings, useKeyboard: !settings.useKeyboard })}
+                    onClick={() => {
+                      if (settings.disableClicking) return;
+                      onUpdateSettings({ ...settings, useKeyboard: !settings.useKeyboard });
+                    }}
                     className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold font-mono text-xs cursor-pointer shadow-md transition-all ${
                       settings.useKeyboard 
                         ? 'bg-cyan-400 border-cyan-500 text-black font-extrabold shadow-cyan-500/20 scale-105' 
                         : 'bg-[#181820] border-white/5 text-gray-400 font-medium hover:border-white/10'
                     }`}
-                    title="Keys: Klicks per Z/X ausführen"
+                    title={settings.disableClicking ? "Tastatursteuerung ist erzwungen (Klicks im Spiel deaktiviert)" : "Keys: Klicks per X/Y/Z ausführen"}
+                    style={settings.disableClicking ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                   >
                     K1
+                  </button>
+                  <button 
+                    onClick={() => {
+                      const nextVal = !settings.disableClicking;
+                      onUpdateSettings({
+                        ...settings,
+                        disableClicking: nextVal,
+                        useKeyboard: nextVal ? true : settings.useKeyboard
+                      });
+                    }}
+                    className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold font-mono text-xs cursor-pointer shadow-md transition-all ${
+                      settings.disableClicking 
+                        ? 'bg-red-500 border-red-600 text-white font-extrabold shadow-red-500/20 scale-105' 
+                        : 'bg-[#181820] border-white/5 text-gray-400 font-medium hover:border-white/10'
+                    }`}
+                    title="No Click: Tippen/Klicks im Spiel deaktivieren (nur X/Y/Z Tastatur)"
+                  >
+                    TK
                   </button>
                   <button 
                     onClick={() => onUpdateSettings({ ...settings, touchControls: !settings.touchControls })}
@@ -1099,11 +1130,11 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                 </div>
               </div>
 
-              {/* Keyboard option Z / X */}
+               {/* Keyboard option Z / X */}
               <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-xl p-4">
                 <div>
                   <h4 className="font-semibold text-white">Tastatursteuerung</h4>
-                  <p className="text-xs text-gray-400 mt-0.5">Erlaube Z/X-Tastendrücke für Klicks</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Erlaube X/Y/Z-Tastendrücke für Klicks (unterstützt QWERTZ & QWERTY)</p>
                 </div>
                 <button
                   id="btn-toggle-keyboard"
@@ -1111,9 +1142,30 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                   className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
                     settings.useKeyboard ? 'bg-[#FF66AA] shadow-[0_0_10px_rgba(255,102,170,0.4)]' : 'bg-white/10'
                   }`}
+                  disabled={settings.disableClicking}
+                  style={settings.disableClicking ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
                 >
                   <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
                     settings.useKeyboard ? 'right-1' : 'left-1'
+                  }`} />
+                </button>
+              </div>
+
+              {/* Disable Clicks during Gameplay option */}
+              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-xl p-4">
+                <div>
+                  <h4 className="font-semibold text-white">Tippen / Klicks im Spiel deaktivieren</h4>
+                  <p className="text-xs text-gray-400 mt-0.5">Deaktiviert Mausklicks/Taps für Hits auf Kreise. Aim per Pointer weiterhin aktiv. Erfordert Tastatursteuerung.</p>
+                </div>
+                <button
+                  id="btn-toggle-disable-clicking"
+                  onClick={() => toggleSettingBool('disableClicking')}
+                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
+                    settings.disableClicking ? 'bg-[#FF66AA] shadow-[0_0_10px_rgba(255,102,170,0.4)]' : 'bg-white/10'
+                  }`}
+                >
+                  <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
+                    settings.disableClicking ? 'right-1' : 'left-1'
                   }`} />
                 </button>
               </div>

@@ -21,6 +21,7 @@ export default function App() {
     volume: 0.6,
     dimLevel: 60,
     useKeyboard: true,
+    disableClicking: false,
     showFps: false,
     uiScale: 1.0,
     autoScaleField: true,

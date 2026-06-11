@@ -65,6 +65,7 @@ export interface GameSettings {
   volume: number; // 0 to 1
   dimLevel: number; // Background dim (0 to 100)
   useKeyboard: boolean; // Z/X keys
+  disableClicking?: boolean; // Disable click/tap interactions in gameplay
   showFps: boolean;
   uiScale: number; // UI/Playfield scale factor (e.g. 0.8, 1.0, 1.2)
   autoScaleField: boolean; // Auto adaptive playfield container

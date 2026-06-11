@@ -179,13 +179,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     resize();
     window.addEventListener('resize', resize);
 
-    // Keyboard bindings for Z / X alternate tap
+    // Keyboard bindings for Z / Y / X alternate tap (Z & Y handles QWERTY vs QWERTZ layout)
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'z' || e.key === 'Z' || e.key === 'x' || e.key === 'X') {
-        // Simulate tap at current laser pointer or pointer position on canvas
-        // For ease of keyboard-mouse hybrid play, we trigger touch on the oldest active hit circle
-        if (isPlayingRef.current && mousePosRef.current) {
-          triggerClick(mousePosRef.current.x, mousePosRef.current.y);
+      if (settings.useKeyboard || settings.disableClicking) {
+        const keyLower = e.key.toLowerCase();
+        if (keyLower === 'z' || keyLower === 'y' || keyLower === 'x') {
+          // Simulate tap at current laser pointer or pointer position on canvas
+          // For ease of keyboard-mouse hybrid play, we trigger touch on the oldest active hit circle
+          if (isPlayingRef.current && mousePosRef.current) {
+            triggerClick(mousePosRef.current.x, mousePosRef.current.y);
+          }
         }
       }
     };
@@ -618,7 +621,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       timestamp: Date.now(),
     });
 
-    triggerClick(clickX, clickY);
+    if (!settings.disableClicking) {
+      triggerClick(clickX, clickY);
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1534,11 +1539,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       <div className="h-14 border-t border-white/[0.08] bg-[#0D0D10] flex items-center justify-between px-6 z-10 text-xs text-gray-400 font-mono">
         <div className="flex items-center gap-2">
           <span>STEUERUNG:</span>
-          <span className="px-2 py-0.5 bg-white/5 rounded text-white text-[10px]">Tippen auf Kreise</span>
-          {settings.useKeyboard && (
+          {settings.disableClicking ? (
             <>
-              <span>oder</span>
-              <span className="px-2 py-0.5 bg-white/5 rounded text-white text-[10px]">Z / X Tasten</span>
+              <span className="px-2 py-0.5 bg-red-500/15 border border-red-500/35 rounded text-red-400 text-[10px] uppercase font-bold tracking-wider">Klicks deaktiviert</span>
+              <span>– Nur</span>
+              <span className="px-2 py-0.5 bg-[#FF66AA]/10 border border-[#FF66AA]/25 rounded text-[#FF66AA] text-[10px] font-bold animate-[pulse_1.5s_infinite]">Maus + Tastatur (X / Y / Z)</span>
+            </>
+          ) : (
+            <>
+              <span className="px-2 py-0.5 bg-white/5 rounded text-white text-[10px]">Tippen auf Kreise</span>
+              {settings.useKeyboard && (
+                <>
+                  <span>oder</span>
+                  <span className="px-2 py-0.5 bg-white/5 rounded text-white text-[10px]">Tastatur (X / Y / Z Tasten)</span>
+                </>
+              )}
             </>
           )}
         </div>
