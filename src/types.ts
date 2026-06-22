@@ -59,6 +59,8 @@ export interface PlayStats {
 }
 
 export interface GameSettings {
+  gameMode?: 'standard' | 'mania';
+  maniaMobileMode?: boolean;
   autoPlay: boolean;
   touchControls: boolean; // Show visual touch tap regions
   hitsounds: boolean;

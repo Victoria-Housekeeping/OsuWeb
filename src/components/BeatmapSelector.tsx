@@ -460,8 +460,18 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
             </div>
           </div>
           <div className="hidden md:flex gap-1 h-8 items-center bg-black/30 border border-white/5 rounded-lg p-0.5 ml-4">
-            <button className="px-3 py-1 bg-[#FF66AA]/10 text-[#FF66AA] rounded-md text-[11px] font-extrabold tracking-wider transition-colors">SOLO</button>
-            <button className="px-3 py-1 text-gray-400 hover:text-white rounded-md text-[11px] font-extrabold tracking-wider transition-colors">MULtIPLAYER</button>
+            <button 
+              onClick={() => onUpdateSettings({ ...settings, gameMode: 'standard' })}
+              className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${(!settings.gameMode || settings.gameMode === 'standard') ? 'bg-[#FF66AA]/10 text-[#FF66AA]' : 'text-gray-400 hover:text-white'}`}
+            >
+              OSU!
+            </button>
+            <button 
+              onClick={() => onUpdateSettings({ ...settings, gameMode: 'mania' })}
+              className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${settings.gameMode === 'mania' ? 'bg-[#FF66AA]/10 text-[#FF66AA]' : 'text-gray-400 hover:text-white'}`}
+            >
+              OSU!MANIA
+            </button>
           </div>
         </div>
 
@@ -979,6 +989,48 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
             </div>
 
             <div className="flex flex-col gap-6 flex-1">
+              {/* Game Mode Option (visible especially on mobile where top bar misses it) */}
+              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-xl p-4">
+                <div>
+                  <h4 className="font-semibold text-white">Spielmodus</h4>
+                  <p className="text-xs text-gray-400 mt-0.5">Wechsle zwischen osu! und osu!mania</p>
+                </div>
+                <div className="flex gap-1 bg-black/30 border border-white/5 rounded-lg p-0.5">
+                  <button 
+                    onClick={() => onUpdateSettings({ ...settings, gameMode: 'standard' })}
+                    className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${(!settings.gameMode || settings.gameMode === 'standard') ? 'bg-[#FF66AA]/10 text-[#FF66AA]' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    osu!
+                  </button>
+                  <button 
+                    onClick={() => onUpdateSettings({ ...settings, gameMode: 'mania' })}
+                    className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${settings.gameMode === 'mania' ? 'bg-[#FF66AA]/10 text-[#FF66AA]' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    mania
+                  </button>
+                </div>
+              </div>
+
+              {/* Mania Mobile Mode Option */}
+              {settings.gameMode === 'mania' && (
+                <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-xl p-4">
+                  <div>
+                    <h4 className="font-semibold text-white">Mobiler Modus (Mobile Mode)</h4>
+                    <p className="text-xs text-gray-400 mt-0.5">Optimierte osu!mania UI mit Touch-Knöpfen für mobile Geräte</p>
+                  </div>
+                  <button
+                    onClick={() => toggleSettingBool('maniaMobileMode')}
+                    className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
+                      settings.maniaMobileMode ? 'bg-[#FF66AA] shadow-[0_0_10px_rgba(255,102,170,0.4)]' : 'bg-white/10'
+                    }`}
+                  >
+                    <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
+                      settings.maniaMobileMode ? 'right-1' : 'left-1'
+                    }`} />
+                  </button>
+                </div>
+              )}
+
               {/* Replay-System Option */}
               <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-xl p-4">
                 <div>

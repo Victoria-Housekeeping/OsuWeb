@@ -89,6 +89,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const trailsRef = useRef<TouchTrail[]>([]);
   const burstsRef = useRef<HitBurst[]>([]);
   const lastFrameTimeRef = useRef<number>(0);
+  const activeManiaKeysRef = useRef<boolean[]>([false, false, false, false]);
 
   // Spinner states
   const spinnerSpinsRef = useRef<number>(0);
@@ -179,20 +180,45 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     resize();
     window.addEventListener('resize', resize);
 
-    // Keyboard bindings for Z / Y / X alternate tap (Z & Y handles QWERTY vs QWERTZ layout)
+    // Keyboard bindings
     const handleKeyDown = (e: KeyboardEvent) => {
+      const keyLower = e.key.toLowerCase();
+      
+      if (settings.gameMode === 'mania') {
+        let lane = -1;
+        if (keyLower === 'd') lane = 0;
+        if (keyLower === 'f') lane = 1;
+        if (keyLower === 'j') lane = 2;
+        if (keyLower === 'k') lane = 3;
+        
+        if (lane !== -1 && !activeManiaKeysRef.current[lane]) {
+          activeManiaKeysRef.current[lane] = true;
+          triggerManiaHit(lane);
+        }
+        return;
+      }
+
       if (settings.useKeyboard || settings.disableClicking) {
-        const keyLower = e.key.toLowerCase();
         if (keyLower === 'z' || keyLower === 'y' || keyLower === 'x') {
-          // Simulate tap at current laser pointer or pointer position on canvas
-          // For ease of keyboard-mouse hybrid play, we trigger touch on the oldest active hit circle
           if (isPlayingRef.current && mousePosRef.current) {
             triggerClick(mousePosRef.current.x, mousePosRef.current.y);
           }
         }
       }
     };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const keyLower = e.key.toLowerCase();
+      if (settings.gameMode === 'mania') {
+        if (keyLower === 'd') activeManiaKeysRef.current[0] = false;
+        if (keyLower === 'f') activeManiaKeysRef.current[1] = false;
+        if (keyLower === 'j') activeManiaKeysRef.current[2] = false;
+        if (keyLower === 'k') activeManiaKeysRef.current[3] = false;
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
 
     // Main animation loop
     let animId: number;
@@ -211,6 +237,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     return () => {
       window.removeEventListener('resize', resize);
       window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
       cancelAnimationFrame(animId);
       cleanupAudio();
     };
@@ -539,6 +566,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     });
   };
 
+  const getManiaLane = (x: number) => {
+    if (x < 128) return 0;
+    if (x < 256) return 1;
+    if (x < 384) return 2;
+    return 3;
+  };
+
+  const triggerManiaHit = (lane: number) => {
+    if (!isPlayingRef.current || isFailed || isFinished) return;
+    const playhead = playheadMsRef.current;
+    
+    // Sort all objects by approach time first, because multiple could be visible.
+    const activeObjects = hitObjectsStateRef.current.filter(obj => {
+      const objLane = getManiaLane(obj.x);
+      // Extra lenient window for mania
+      const isVisible = playhead >= obj.time - hit50Window * 2.5 && playhead <= obj.time + hit50Window;
+      return isVisible && !obj.isHit && obj.hitResult === null && objLane === lane;
+    }).sort((a, b) => a.time - b.time);
+
+    if (activeObjects.length === 0) return;
+
+    const oldest = activeObjects[0];
+    const diff = Math.abs(playhead - oldest.time);
+
+    if (diff <= hit300Window) {
+      triggerHit(oldest, 300);
+    } else if (diff <= hit100Window) {
+      triggerHit(oldest, 100);
+    } else if (diff <= hit50Window) {
+      triggerHit(oldest, 50);
+    } else {
+      triggerHit(oldest, 0); // miss
+    }
+  };
+
   // Handle actual touchscreen and mouse coordinates
   const triggerClick = (clickX: number, clickY: number) => {
     if (!isPlayingRef.current || isFailed || isFinished) return;
@@ -793,6 +855,125 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // Get transforms
     const { scale, offsetX, offsetY } = getTransforms(w, h);
     const playhead = playheadMsRef.current;
+    const renderScale = settings.autoScaleField !== false ? (settings.uiScale || 1.0) : 1.0;
+    const skin = settings.skinPreset || 'lazer';
+
+    // === MANIA MODE RENDERING ===
+    if (settings.gameMode === 'mania') {
+      const mobileBoost = settings.maniaMobileMode ? 2.0 : 1.0;
+      const laneWidth = 60 * scale * renderScale * mobileBoost;
+      const trackWidth = laneWidth * 4;
+      const startX = offsetX + (512 * scale) / 2 - trackWidth / 2;
+      let startY = offsetY;
+      let height = 384 * scale;
+
+      if (settings.maniaMobileMode) {
+        startY = 20 * scale;
+        height = h - (h / 3) - startY;
+      }
+
+      // Draw track bg
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(startX, startY, trackWidth, height);
+
+      // Draw lanes
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        ctx.beginPath();
+        ctx.moveTo(startX + i * laneWidth, startY);
+        ctx.lineTo(startX + i * laneWidth, startY + height);
+        ctx.stroke();
+      }
+
+      // Draw keys and press feedback
+      const keys = ['D', 'F', 'J', 'K'];
+      for (let i = 0; i < 4; i++) {
+        const isPressed = activeManiaKeysRef.current[i];
+        if (isPressed) {
+          const grd = ctx.createLinearGradient(0, startY + height, 0, startY + height - 150 * scale);
+          grd.addColorStop(0, 'rgba(255, 102, 170, 0.5)');
+          grd.addColorStop(1, 'rgba(255, 102, 170, 0)');
+          ctx.fillStyle = grd;
+          ctx.fillRect(startX + i * laneWidth, startY, laneWidth, height);
+        }
+        
+        ctx.fillStyle = isPressed ? '#FF66AA' : '#FFFFFF';
+        ctx.fillRect(startX + i * laneWidth, startY + height - 20 * scale, laneWidth, 4);
+
+        ctx.font = `bold ${14 * scale}px var(--font-sans)`;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.textAlign = 'center';
+        ctx.fillText(keys[i], startX + i * laneWidth + laneWidth / 2, startY + height + 20 * scale);
+      }
+
+      // Draw notes
+      const fallDuration = approachDuration;
+      hitObjectsStateRef.current.forEach((obj) => {
+        // Skip hits and misses
+        if (obj.hitResult !== null) return;
+        
+        const isVisible = playhead >= obj.time - fallDuration && playhead <= obj.time + hit50Window;
+        if (!isVisible) return;
+
+        const lane = getManiaLane(obj.x);
+        const fallRatio = Math.max(0, 1 - (obj.time - playhead) / fallDuration);
+        const noteY = startY + (height - 20 * scale) * fallRatio;
+        const noteHeight = 15 * scale;
+
+        ctx.fillStyle = (lane === 0 || lane === 3) ? '#FF66AA' : '#44EEFF';
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.shadowBlur = 10;
+        ctx.fillRect(startX + lane * laneWidth + 2, noteY - noteHeight, laneWidth - 4, noteHeight);
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(startX + lane * laneWidth + 2, noteY - noteHeight, laneWidth - 4, noteHeight);
+      });
+      
+      const activeBursts = burstsRef.current.filter((b) => playhead - b.timestamp <= 300);
+      burstsRef.current = activeBursts; // Filter bursts to avoid memory leak
+
+      // Override floating animations to be rendered within track bounds
+      const activeFloaters = floatersRef.current.filter(f => playhead - f.timestamp <= 600);
+      floatersRef.current = activeFloaters;
+
+      activeFloaters.forEach((f) => {
+        const age = playhead - f.timestamp;
+        const opacity = Math.max(0, 1 - age / 600);
+        const dy = (age / 600) * 40 * scale; 
+        const lane = getManiaLane(f.x);
+        const fx = startX + lane * laneWidth + laneWidth / 2;
+        const fy = startY + height - Math.min(100, dy); // float upwards near bottom
+
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        if (f.result === 300) {
+          ctx.fillStyle = `rgba(34, 197, 94, ${opacity})`;
+          ctx.font = `bold ${Math.floor(28 * scale)}px var(--font-sans)`;
+          ctx.fillText('300', fx, fy);
+        } else if (f.result === 100) {
+          ctx.fillStyle = `rgba(59, 130, 246, ${opacity})`;
+          ctx.font = `bold ${Math.floor(24 * scale)}px var(--font-sans)`;
+          ctx.fillText('100', fx, fy);
+        } else if (f.result === 50) {
+          ctx.fillStyle = `rgba(234, 179, 8, ${opacity})`;
+          ctx.font = `bold ${Math.floor(20 * scale)}px var(--font-sans)`;
+          ctx.fillText('50', fx, fy);
+        } else {
+          ctx.fillStyle = `rgba(239, 68, 68, ${opacity})`;
+          ctx.font = `bold ${Math.floor(26 * scale)}px var(--font-sans)`;
+          ctx.fillText('✕', fx, fy);
+        }
+        ctx.restore();
+      });
+
+      return;
+    }
+    // === END MANIA MODE RENDERING ===
+
 
     // Draw OSU Playfield Area Neon boundary
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
@@ -830,9 +1011,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
 
     // Step 1: Draw ALL active sliders first (so hit circles are layered on top)
-    const renderScale = settings.autoScaleField !== false ? (settings.uiScale || 1.0) : 1.0;
-    const skin = settings.skinPreset || 'lazer';
-
     hitObjectsStateRef.current.forEach((obj) => {
       // Filter visibility
       const isVisible = playhead >= obj.time - approachDuration && playhead <= (obj.endTime || obj.time + 500);
@@ -1243,7 +1421,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     });
 
     // Step 4: Draw Floating Hit accuracy scores (300, 100, 50, Miss)
-    floatersRef.current.forEach((f) => {
+    const activeFloatersStandard = floatersRef.current.filter((f) => playhead - f.timestamp <= 600);
+    floatersRef.current = activeFloatersStandard;
+
+    activeFloatersStandard.forEach((f) => {
       const age = playhead - f.timestamp;
       const opacity = Math.max(0, 1 - age / 600);
       const dy = (age / 600) * 45 * drawScale; // float slowly upwards
@@ -1496,6 +1677,40 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           className="absolute inset-0 block w-full h-full"
         />
 
+        {/* Mania Mobile Touch Buttons */}
+        {settings.gameMode === 'mania' && settings.maniaMobileMode && (
+          <div className="absolute inset-x-0 bottom-0 h-1/3 flex justify-center pb-6 px-4 pointer-events-none z-30">
+            <div className="w-full max-w-lg flex gap-2 h-full pointer-events-auto">
+              {[0, 1, 2, 3].map(lane => (
+                <div
+                  key={lane}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    if (!activeManiaKeysRef.current[lane]) {
+                      activeManiaKeysRef.current[lane] = true;
+                      triggerManiaHit(lane);
+                    }
+                  }}
+                  onPointerUp={(e) => {
+                    e.preventDefault();
+                    activeManiaKeysRef.current[lane] = false;
+                  }}
+                  onPointerCancel={(e) => {
+                    e.preventDefault();
+                    activeManiaKeysRef.current[lane] = false;
+                  }}
+                  onPointerLeave={(e) => {
+                    e.preventDefault();
+                    activeManiaKeysRef.current[lane] = false;
+                  }}
+                  className="flex-1 bg-white/5 active:bg-white/20 border-t-4 border-[#FF66AA]/80 rounded-t-xl transition-colors backdrop-blur-sm touch-none"
+                  style={{ touchAction: 'none' }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Autoplay Active Overlay */}
         {settings.autoPlay && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-yellow-500/15 border border-yellow-500/30 text-yellow-500 text-xs font-mono tracking-widest uppercase rounded-full shadow-lg shadow-black/40 flex items-center gap-2">
@@ -1539,7 +1754,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       <div className="h-14 border-t border-white/[0.08] bg-[#0D0D10] flex items-center justify-between px-6 z-10 text-xs text-gray-400 font-mono">
         <div className="flex items-center gap-2">
           <span>STEUERUNG:</span>
-          {settings.disableClicking ? (
+          {settings.gameMode === 'mania' ? (
+            <span className="px-2 py-0.5 bg-[#FF66AA]/10 border border-[#FF66AA]/25 rounded text-[#FF66AA] text-[10px] font-bold">MANIA MODUS ({settings.maniaMobileMode ? 'TOUCH BUTTONS' : 'D / F / J / K'})</span>
+          ) : settings.disableClicking ? (
             <>
               <span className="px-2 py-0.5 bg-red-500/15 border border-red-500/35 rounded text-red-400 text-[10px] uppercase font-bold tracking-wider">Klicks deaktiviert</span>
               <span>– Nur</span>

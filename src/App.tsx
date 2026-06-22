@@ -15,6 +15,7 @@ export default function App() {
   const [selectedVersionIdx, setSelectedVersionIdx] = useState<number>(0);
 
   const DEFAULT_SETTINGS: GameSettings = {
+    gameMode: 'standard',
     autoPlay: false,
     touchControls: true, // default to true so visual tapping zones are visible for tablet players
     hitsounds: true,
