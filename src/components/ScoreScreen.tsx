@@ -102,7 +102,7 @@ export const ScoreScreen: React.FC<ScoreScreenProps> = ({
       <div 
         className="absolute inset-0 opacity-15 overflow-hidden pointer-events-none"
         style={{ 
-          backgroundImage: 'radial-gradient(circle at center, rgba(255,102,170,0.15) 0%, transparent 70%), linear-gradient(rgba(255,255,255,0.01) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.01) 1px, transparent 1px)',
+          backgroundImage: 'radial-gradient(circle at center, rgba(0,232,255,0.15) 0%, transparent 70%), linear-gradient(rgba(255,255,255,0.01) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.01) 1px, transparent 1px)',
           backgroundSize: '100% 100%, 40px 40px, 40px 40px'
         }}
       />
@@ -111,7 +111,7 @@ export const ScoreScreen: React.FC<ScoreScreenProps> = ({
         
         {/* Head Map Title details */}
         <div className="text-center">
-          <span className="text-[10px] font-bold tracking-widest text-[#FF66AA] bg-[#FF66AA]/10 border border-[#FF66AA]/20 px-3.5 py-1 rounded-full uppercase font-mono">
+          <span className="text-[10px] font-bold tracking-widest text-[#00E8FF] bg-[#00E8FF]/10 border border-[#00E8FF]/20 px-3.5 py-1 rounded-full uppercase font-mono">
             Runde Beendet
           </span>
           <h2 className="text-2xl md:text-3xl font-black tracking-tight text-white mt-4 line-clamp-1">{beatmap.title}</h2>
@@ -131,8 +131,8 @@ export const ScoreScreen: React.FC<ScoreScreenProps> = ({
           <div className="md:col-span-8 flex flex-col gap-3">
             
             {isHighscore && (
-              <div className="bg-[#FF66AA]/15 border border-[#FF66AA]/30 text-[#FF66AA] px-4 py-2 rounded-xl text-xs flex items-center gap-2 font-bold uppercase tracking-wider font-mono animate-pulse">
-                <Sparkles className="w-4 h-4 fill-[#FF66AA] shrink-0" />
+              <div className="bg-[#00E8FF]/15 border border-[#00E8FF]/30 text-[#00E8FF] px-4 py-2 rounded-xl text-xs flex items-center gap-2 font-bold uppercase tracking-wider font-mono animate-pulse">
+                <Sparkles className="w-4 h-4 fill-[#00E8FF] shrink-0" />
                 <span>NEUER PERSÖNLICHER BESTWERT!</span>
               </div>
             )}
@@ -155,11 +155,11 @@ export const ScoreScreen: React.FC<ScoreScreenProps> = ({
               <div className="bg-[#0D0D10] border border-white/5 p-4 rounded-xl col-span-2 flex items-center justify-between">
                 <div>
                   <span className="text-[10px] font-bold font-mono text-gray-400 tracking-wider">MAXIMALE COMBO</span>
-                  <div className="text-xl font-bold tracking-tight text-[#FF66AA] mt-0.5 font-mono">
+                  <div className="text-xl font-bold tracking-tight text-[#00E8FF] mt-0.5 font-mono">
                     {stats.maxCombo}x
                   </div>
                 </div>
-                <Award className="w-8 h-8 text-[#FF66AA]/25 mr-2" />
+                <Award className="w-8 h-8 text-[#00E8FF]/25 mr-2" />
               </div>
             </div>
 
@@ -194,48 +194,12 @@ export const ScoreScreen: React.FC<ScoreScreenProps> = ({
           </div>
         </div>
 
-        {/* Save Replay block if enabled */}
-        {settings?.enableReplays && (
-          <div className="bg-[#0D0D10]/80 border border-white/5 rounded-2xl p-4 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-[#FF66AA] uppercase tracking-wider font-mono">Replay-System</span>
-              <span className="text-[9px] text-[#FF66AA]/60 bg-[#FF66AA]/10 px-2 py-0.5 rounded border border-[#FF66AA]/10 font-mono">BETA</span>
-            </div>
-            <p className="text-xs text-gray-400">
-              Möchtest du dieses Ergebnis als Replay speichern, um es später in der Songauswahl anzusehen?
-            </p>
-            {isReplaySaved ? (
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold rounded-xl text-center">
-                ✓ Replay erfolgreich gespeichert! Es wird nun neben der Beatmap angezeigt.
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  maxLength={18}
-                  placeholder="Dein Spielername..."
-                  value={playerName}
-                  onChange={(e) => setPlayerName(e.target.value)}
-                  className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-xs font-bold text-white focus:border-[#FF66AA] focus:outline-none transition-all placeholder:text-gray-600"
-                />
-                <button
-                  onClick={handleSaveReplayClick}
-                  disabled={!playerName.trim()}
-                  className="bg-yellow-450 hover:bg-yellow-500 text-black font-extrabold px-5 py-2 rounded-xl text-xs uppercase tracking-wide cursor-pointer transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
-                >
-                  Speichern
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Action Controls */}
         <div className="flex flex-col sm:flex-row gap-4 border-t border-white/5 pt-6">
           <button
             id="btn-score-retry"
             onClick={onRetry}
-            className="flex-1 py-3 bg-[#FF66AA] hover:bg-[#ff86b8] active:scale-95 text-black font-black uppercase text-sm tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,102,170,0.3)] cursor-pointer"
+            className="flex-1 py-3 bg-[#00E8FF] hover:bg-[#33EFFF] active:scale-95 text-black font-black uppercase text-sm tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,232,255,0.3)] cursor-pointer"
           >
             <RotateCcw className="w-4 h-4 text-black stroke-[3px]" />
             <span>Wiederholen</span>

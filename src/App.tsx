@@ -27,7 +27,6 @@ export default function App() {
     uiScale: 1.0,
     autoScaleField: true,
     audioOffset: 0,
-    enableReplays: true,
     skinPreset: 'lazer',
   };
 

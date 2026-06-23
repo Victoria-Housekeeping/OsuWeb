@@ -72,7 +72,6 @@ export interface GameSettings {
   uiScale: number; // UI/Playfield scale factor (e.g. 0.8, 1.0, 1.2)
   autoScaleField: boolean; // Auto adaptive playfield container
   audioOffset: number; // Audio latency offset in milliseconds
-  enableReplays: boolean; // Enable/disable replay system
   skinPreset: 'lazer' | 'argon' | 'whitecat' | 'classic' | 'custom';
   customSkinColors?: {
     hitcircleFill: string;

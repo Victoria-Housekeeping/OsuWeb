@@ -892,13 +892,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const isPressed = activeManiaKeysRef.current[i];
         if (isPressed) {
           const grd = ctx.createLinearGradient(0, startY + height, 0, startY + height - 150 * scale);
-          grd.addColorStop(0, 'rgba(255, 102, 170, 0.5)');
-          grd.addColorStop(1, 'rgba(255, 102, 170, 0)');
+          grd.addColorStop(0, 'rgba(0,232,255, 0.5)');
+          grd.addColorStop(1, 'rgba(0,232,255, 0)');
           ctx.fillStyle = grd;
           ctx.fillRect(startX + i * laneWidth, startY, laneWidth, height);
         }
         
-        ctx.fillStyle = isPressed ? '#FF66AA' : '#FFFFFF';
+        ctx.fillStyle = isPressed ? '#00E8FF' : '#FFFFFF';
         ctx.fillRect(startX + i * laneWidth, startY + height - 20 * scale, laneWidth, 4);
 
         ctx.font = `bold ${14 * scale}px var(--font-sans)`;
@@ -921,7 +921,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const noteY = startY + (height - 20 * scale) * fallRatio;
         const noteHeight = 15 * scale;
 
-        ctx.fillStyle = (lane === 0 || lane === 3) ? '#FF66AA' : '#44EEFF';
+        ctx.fillStyle = (lane === 0 || lane === 3) ? '#00E8FF' : '#33EFFF';
         ctx.shadowColor = ctx.fillStyle;
         ctx.shadowBlur = 10;
         ctx.fillRect(startX + lane * laneWidth + 2, noteY - noteHeight, laneWidth - 4, noteHeight);
@@ -1542,7 +1542,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     return (
       <span className="font-mono text-xl md:text-2xl tracking-wider font-extrabold">
         <span className="text-white/35">{leading}</span>
-        <span className="text-white drop-shadow-[0_0_10px_rgba(255,102,170,0.7)]">{active}</span>
+        <span className="text-white drop-shadow-[0_0_10px_rgba(0,232,255,0.7)]">{active}</span>
       </span>
     );
   };
@@ -1553,8 +1553,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       {/* Dynamic inline-styled animations keyframes matching osu!lazer */}
       <style>{`
         @keyframes comboPop {
-          0% { transform: scale(1.23) rotate(-2deg); text-shadow: 0 0 16px rgba(255,102,170,0.85); }
-          100% { transform: scale(1) rotate(0deg); text-shadow: 0 0 5px rgba(255,102,170,0.3); }
+          0% { transform: scale(1.23) rotate(-2deg); text-shadow: 0 0 16px rgba(0,232,255,0.85); }
+          100% { transform: scale(1) rotate(0deg); text-shadow: 0 0 5px rgba(0,232,255,0.3); }
         }
         .animate-combo-pop {
           animation: comboPop 0.14s cubic-bezier(0.18, 0.89, 0.32, 1.25) forwards;
@@ -1564,10 +1564,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       {/* Laser HP Bar spanning the absolute top width of the screen */}
       <div className="absolute top-0 left-0 right-0 h-1.5 bg-black/45 z-30">
         <div 
-          className={`h-full transition-all duration-75 shadow-[0_0_10px_rgba(255,102,170,0.8)] ${
+          className={`h-full transition-all duration-75 shadow-[0_0_10px_rgba(0,232,255,0.8)] ${
             stats.hp < 30 
               ? 'bg-gradient-to-r from-red-500 to-rose-600 shadow-[0_0_14px_rgba(239,68,68,0.95)] animate-pulse' 
-              : 'bg-gradient-to-r from-[#FF3399] via-[#FF66AA] to-[#FF99CC]'
+              : 'bg-gradient-to-r from-[#00CFFF] via-[#00E8FF] to-[#33EFFF]'
           }`}
           style={{ width: `${stats.hp}%` }}
         />
@@ -1577,8 +1577,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       <div className="h-16 border-b border-white/[0.05] bg-[#121216] flex items-center justify-between px-6 z-10 animate-fade-in relative shadow-[0_4px_25px_rgba(0,0,0,0.4)]">
         
         {spectatingReplayName && (
-          <div className="absolute left-1/2 -translate-x-1/2 z-20 bg-[#FF66AA]/10 border border-[#FF66AA]/20 text-[#FF66AA] px-4 py-1 rounded-full font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-[0_0_15px_rgba(255,102,170,0.2)] backdrop-blur-sm">
-            <span className="w-2 h-2 rounded-full bg-[#FF66AA] animate-pulse" />
+          <div className="absolute left-1/2 -translate-x-1/2 z-20 bg-[#00E8FF]/10 border border-[#00E8FF]/20 text-[#00E8FF] px-4 py-1 rounded-full font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-[0_0_15px_rgba(0,232,255,0.2)] backdrop-blur-sm">
+            <span className="w-2 h-2 rounded-full bg-[#00E8FF] animate-pulse" />
             <span>SPECTATING REPLAY: {spectatingReplayName}</span>
           </div>
         )}
@@ -1591,14 +1591,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               cleanupAudio();
               onClose();
             }}
-            className="flex items-center gap-2 px-3.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs text-gray-200 font-extrabold uppercase tracking-wider transition-all cursor-pointer hover:border-[#FF66AA]/30"
+            className="flex items-center gap-2 px-3.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs text-gray-200 font-extrabold uppercase tracking-wider transition-all cursor-pointer hover:border-[#00E8FF]/30"
           >
-            <X className="w-4 h-4 text-[#FF66AA]" />
+            <X className="w-4 h-4 text-[#00E8FF]" />
             <span>Beenden</span>
           </button>
           
           <div className="hidden lg:block border-l border-white/10 pl-4">
-            <h1 className="text-xs font-black tracking-widest leading-none text-[#FF66AA] uppercase">SPIELT GERADE</h1>
+            <h1 className="text-xs font-black tracking-widest leading-none text-[#00E8FF] uppercase">SPIELT GERADE</h1>
             <h2 className="text-sm font-bold tracking-tight text-white mt-1 line-clamp-1">{beatmap.title} <span className="opacity-50 text-xs font-medium">[{beatmap.version}]</span></h2>
           </div>
         </div>
@@ -1631,7 +1631,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         <div className="absolute bottom-6 left-8 pointer-events-none z-25 select-none font-sans">
           <div className="flex flex-col items-start bg-black/25 backdrop-blur-sm p-4 rounded-2xl border border-white/5">
             <span className="text-[9px] font-black font-mono tracking-widest text-[#FF65A9] uppercase leading-none">COMBO</span>
-            <div key={stats.combo} className="text-5xl md:text-6xl font-black italic tracking-tighter text-[#FF65A9] drop-shadow-[0_2px_12px_rgba(255,102,170,0.6)] animate-combo-pop select-none leading-none mt-1.5">
+            <div key={stats.combo} className="text-5xl md:text-6xl font-black italic tracking-tighter text-[#FF65A9] drop-shadow-[0_2px_12px_rgba(0,232,255,0.6)] animate-combo-pop select-none leading-none mt-1.5">
               {stats.combo}<span className="text-2xl font-black not-italic ml-1">x</span>
             </div>
             <div className="text-[9px] font-bold text-white/40 mt-1 uppercase font-mono tracking-wider">MAX: {stats.maxCombo}x</div>
@@ -1703,7 +1703,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     e.preventDefault();
                     activeManiaKeysRef.current[lane] = false;
                   }}
-                  className="flex-1 bg-white/5 active:bg-white/20 border-t-4 border-[#FF66AA]/80 rounded-t-xl transition-colors backdrop-blur-sm touch-none"
+                  className="flex-1 bg-white/5 active:bg-white/20 border-t-4 border-[#00E8FF]/80 rounded-t-xl transition-colors backdrop-blur-sm touch-none"
                   style={{ touchAction: 'none' }}
                 />
               ))}
@@ -1733,7 +1733,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             <button
               id="btn-retry-failed"
               onClick={handleRestart}
-              className="flex items-center gap-2 px-6 py-3 bg-[#FF66AA] hover:bg-[#ff86b8] active:scale-95 text-black font-black uppercase text-sm tracking-wider rounded-xl transition-all shadow-[0_0_20px_rgba(255,102,170,0.3)] cursor-pointer"
+              className="flex items-center gap-2 px-6 py-3 bg-[#00E8FF] hover:bg-[#ff86b8] active:scale-95 text-black font-black uppercase text-sm tracking-wider rounded-xl transition-all shadow-[0_0_20px_rgba(0,232,255,0.3)] cursor-pointer"
             >
               <RotateCcw className="w-4 h-4 stroke-[3px]" />
               <span>Retry</span>
@@ -1755,12 +1755,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         <div className="flex items-center gap-2">
           <span>STEUERUNG:</span>
           {settings.gameMode === 'mania' ? (
-            <span className="px-2 py-0.5 bg-[#FF66AA]/10 border border-[#FF66AA]/25 rounded text-[#FF66AA] text-[10px] font-bold">MANIA MODUS ({settings.maniaMobileMode ? 'TOUCH BUTTONS' : 'D / F / J / K'})</span>
+            <span className="px-2 py-0.5 bg-[#00E8FF]/10 border border-[#00E8FF]/25 rounded text-[#00E8FF] text-[10px] font-bold">MANIA MODUS ({settings.maniaMobileMode ? 'TOUCH BUTTONS' : 'D / F / J / K'})</span>
           ) : settings.disableClicking ? (
             <>
               <span className="px-2 py-0.5 bg-red-500/15 border border-red-500/35 rounded text-red-400 text-[10px] uppercase font-bold tracking-wider">Klicks deaktiviert</span>
               <span>– Nur</span>
-              <span className="px-2 py-0.5 bg-[#FF66AA]/10 border border-[#FF66AA]/25 rounded text-[#FF66AA] text-[10px] font-bold animate-[pulse_1.5s_infinite]">Maus + Tastatur (X / Y / Z)</span>
+              <span className="px-2 py-0.5 bg-[#00E8FF]/10 border border-[#00E8FF]/25 rounded text-[#00E8FF] text-[10px] font-bold animate-[pulse_1.5s_infinite]">Maus + Tastatur (X / Y / Z)</span>
             </>
           ) : (
             <>
@@ -1783,12 +1783,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           >
             {isPlayingState ? (
               <>
-                <Pause className="w-3 h-3 text-[#FF66AA]" />
+                <Pause className="w-3 h-3 text-[#00E8FF]" />
                 <span>Pausieren</span>
               </>
             ) : (
               <>
-                <Play className="w-3 h-3 text-[#FF66AA] fill-[#FF66AA]" />
+                <Play className="w-3 h-3 text-[#00E8FF] fill-[#00E8FF]" />
                 <span>Fortsetzen</span>
               </>
             )}

@@ -228,7 +228,7 @@ export function IntroAndStartScreen({
 
   const getRandomOsuColor = () => {
     const colors = [
-      '#FF66AA', // signature pink
+      '#00E8FF', // signature pink
       '#ff88cc',
       '#ba66ff', // pastel purple
       '#66b2ff', // bright sky blue
@@ -453,7 +453,7 @@ export function IntroAndStartScreen({
               <div className="flex items-center space-x-6 animate-[fadeIn_1s_ease-out_forwards]">
                 <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[12px] border-b-gray-400 -rotate-90 animate-[spin_4s_linear_infinite]" />
                 <span className="text-3xl tracking-[0.25em] text-white/90 lowercase" style={{fontFamily: "'Space Grotesk', sans-serif"}}>
-                   welcome to osu!
+                   welcome to Yada!
                 </span>
                 <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[12px] border-b-gray-400 rotate-90 animate-[spin_5s_linear_infinite_reverse]" />
               </div>
@@ -464,11 +464,9 @@ export function IntroAndStartScreen({
           {introSubPhase === 'outline' && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
               <div className="animate-[introLogoScale_1.5s_cubic-bezier(0.1,0.8,0.2,1)_forwards]">
-                <div className="w-[260px] h-[260px] sm:w-[340px] sm:h-[340px] rounded-full flex flex-col items-center justify-center relative bg-gradient-to-b from-[#ff8ebb] via-[#FF66AA] to-[#cc2277] shadow-[0_0_60px_rgba(255,102,170,0.48)] border-[10px] sm:border-[13px] border-white">
+                <div className="w-[260px] h-[260px] sm:w-[340px] sm:h-[340px] rounded-full flex flex-col items-center justify-center relative bg-gradient-to-b from-[#33EFFF] via-[#00E8FF] to-[#0099FF] shadow-[0_0_60px_rgba(0,232,255,0.48)] border-[10px] sm:border-[13px] border-white">
                   <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.22)_0%,rgba(0,0,0,0)_70%)] pointer-events-none" />
-                  <div className="text-white text-[110px] sm:text-[140px] font-black italic tracking-tighter select-none font-sans mt-[-10px] leading-none drop-shadow-[0_4px_12px_rgba(0,0,0,0.25)]">
-                    osu!
-                  </div>
+                  <div className="text-white text-[110px] sm:text-[140px] font-black italic tracking-tighter select-none font-sans mt-[-10px] leading-none drop-shadow-[0_4px_12px_rgba(0,0,0,0.25)]">Yada!</div>
                 </div>
               </div>
             </div>
@@ -480,7 +478,7 @@ export function IntroAndStartScreen({
       {(phase === 'menu_start' || phase === 'synth_intro') && (
         <div className="relative z-10 flex flex-col items-center justify-center select-none w-full h-full">
           {/* Radial grid subtle flare */}
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,102,170,0.02)_0%,rgba(0,0,0,0)_85%)] z-1 pointer-events-none animate-pulse" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,232,255,0.02)_0%,rgba(0,0,0,0)_85%)] z-1 pointer-events-none animate-pulse" />
 
           {/* Giant Pink Pulsing Logo circle */}
           <div
@@ -491,32 +489,30 @@ export function IntroAndStartScreen({
             style={getCentralLogoStyle()}
             className={`w-[260px] h-[260px] sm:w-[340px] sm:h-[340px] rounded-full flex flex-col items-center justify-center relative cursor-pointer select-none transition-all ${
               isExploding
-                ? 'shadow-[0_0_120px_rgba(255,102,170,1.0)] bg-[#FF66AA]'
-                : 'bg-gradient-to-b from-[#ff8ebb] via-[#FF66AA] to-[#cc2277] shadow-[0_0_60px_rgba(255,102,170,0.48)] border-[10px] sm:border-[13px] border-white hover:shadow-[0_0_80px_rgba(255,102,170,0.72)]'
+                ? 'shadow-[0_0_120px_rgba(0,232,255,1.0)] bg-[#00E8FF]'
+                : 'bg-gradient-to-b from-[#33EFFF] via-[#00E8FF] to-[#0099FF] shadow-[0_0_60px_rgba(0,232,255,0.48)] border-[10px] sm:border-[13px] border-white hover:shadow-[0_0_80px_rgba(0,232,255,0.72)]'
             }`}
           >
             {/* Soft inner reflex gloss */}
             <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.22)_0%,rgba(0,0,0,0)_70%)] pointer-events-none" />
 
             {/* Signature logo letter */}
-            <div className="text-white text-[110px] sm:text-[140px] font-black italic tracking-tighter select-none font-sans mt-[-10px] leading-none drop-shadow-[0_4px_12px_rgba(0,0,0,0.25)]">
-              osu!
-            </div>
+            <div className="text-white text-[110px] sm:text-[140px] font-black italic tracking-tighter select-none font-sans mt-[-10px] leading-none drop-shadow-[0_4px_12px_rgba(0,0,0,0.25)]">Yada!</div>
 
             {/* Dash spinner outer outline border */}
             {isHovered && (
-              <div className="absolute -inset-5 sm:-inset-7 rounded-full border-2 border-dashed border-[#FF66AA] animate-[spin_12s_linear_infinite]" />
+              <div className="absolute -inset-5 sm:-inset-7 rounded-full border-2 border-dashed border-[#00E8FF] animate-[spin_12s_linear_infinite]" />
             )}
 
             {/* Soft ambient wave loop */}
-            <div className={`absolute -inset-3 sm:-inset-4 rounded-full border border-[#FF66AA]/30 transition-transform duration-500 scale-102 ${
+            <div className={`absolute -inset-3 sm:-inset-4 rounded-full border border-[#00E8FF]/30 transition-transform duration-500 scale-102 ${
               isHovered ? 'animate-ping' : ''
             }`} />
           </div>
 
           {/* Prompt labels line */}
           <div className="mt-12 text-center relative z-10 pointer-events-none animate-[fadeIn_0.5s_ease-out]">
-            <p className="text-[#FF66AA] font-black text-xs sm:text-sm tracking-[0.25em] font-sans uppercase animate-pulse">
+            <p className="text-[#00E8FF] font-black text-xs sm:text-sm tracking-[0.25em] font-sans uppercase animate-pulse">
               KLICKE DEN KREIS ZUM STARTEN
             </p>
             <p className="text-xs text-gray-500 font-mono mt-2.5 tracking-wide">

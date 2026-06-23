@@ -157,102 +157,9 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
 
     const fileName = file.name.toLowerCase();
 
-    // Check if importing a Replay or Skin JSON file
-    if (fileName.endsWith('.json')) {
-      setLoadingStep('Analysiere Import-Datei (.json)...');
-      try {
-        const text = await file.text();
-        const data = JSON.parse(text);
-
-        // Check if the JSON is a Skin configuration
-        const isSkin = data.skinPreset !== undefined || data.customSkinColors !== undefined || data.hitcircleFill !== undefined;
-        if (isSkin) {
-          const skinColors = data.customSkinColors || {
-            hitcircleFill: data.hitcircleFill || '#3b82f6',
-            hitcircleBorder: data.hitcircleBorder || '#ffffff',
-            approachCircleColor: data.approachCircleColor || '#60a5fa',
-            textColor: data.textColor || '#ffffff',
-            sliderTrackColor: data.sliderTrackColor || '#2563eb',
-          };
-          onUpdateSettings({
-            ...settings,
-            skinPreset: 'custom',
-            customSkinColors: skinColors,
-          });
-          setIsLoading(false);
-          setLoadingStep('');
-          setErrorMsg(`✓ Skin "${data.name || data.skinName || 'Eigener Skin'}" erfolgreich importiert und aktiviert!`);
-          return;
-        }
-
-        // Extract metadata with high-grade fallbacks
-
-        const playerName = data.playerName || data.name || data.player || 'Replay Spieler';
-        const score = Number(data.score !== undefined ? data.score : 650000);
-        const maxCombo = Number(data.maxCombo !== undefined ? data.maxCombo : (data.combo !== undefined ? data.combo : 120));
-        const accuracy = Number(data.accuracy !== undefined ? data.accuracy : (data.acc !== undefined ? data.acc : 95.5));
-        const dateStr = data.date || new Date().toLocaleDateString('de-DE');
-
-        // Determine destination beatmap ID
-        const activeGroup = mapGroups[selectedGroupIdx];
-        const activeVersion = activeGroup?.versions[selectedVersionIdx];
-        const targetBeatmapId = data.beatmapId || activeVersion?.id || 'built-in-synthwave-tutorial';
-
-        // Save replay!
-        saveReplay(targetBeatmapId, {
-          beatmapId: targetBeatmapId,
-          playerName,
-          score,
-          maxCombo,
-          accuracy,
-          date: dateStr,
-        });
-
-        setIsLoading(false);
-        setLoadingStep('');
-        
-        // Show custom success notification inside error message box structure
-        setErrorMsg(`✓ Replay für "${playerName}" erfolgreich importiert und zugeordnet!`);
-        return;
-      } catch (err: any) {
-        console.error('Replay import failure:', err);
-        setErrorMsg('Fehler beim Replay-Import: ' + (err.message || 'Ungültiges Format'));
-        setIsLoading(false);
-        return;
-      }
-    }
-
-    const activeGroup = mapGroups[selectedGroupIdx];
-    const activeVersion = activeGroup ? activeGroup.versions[selectedVersionIdx] : null;
-
-    // Check if importing a Video file
-    if (fileName.endsWith('.mp4') || fileName.endsWith('.webm') || fileName.endsWith('.mov') || fileName.endsWith('.avi')) {
-      if (!activeVersion) {
-        setErrorMsg('Bitte wähle zuerst einen Song und eine Schwierigkeit aus, um das Video zuzuordnen!');
-        setIsLoading(false);
-        return;
-      }
-      setLoadingStep('Binde Hintergrund-Video an ausgewählten Song...');
-      try {
-        const videoUrl = URL.createObjectURL(file);
-        activeVersion.videoUrl = videoUrl;
-        activeVersion.videoBlob = file;
-        activeVersion.videoFilename = file.name;
-
-        setErrorMsg(`✓ Video "${file.name}" erfolgreich an "${activeGroup.title} [${activeVersion.version}]" gebunden!`);
-        setIsLoading(false);
-        setLoadingStep('');
-        return;
-      } catch (err: any) {
-        setErrorMsg('Fehler beim Video-Import: ' + err.message);
-        setIsLoading(false);
-        return;
-      }
-    }
-
     setLoadingStep('Lese Beatmap Archiv (.osz)...');
     if (!fileName.endsWith('.osz') && !fileName.endsWith('.zip')) {
-      setErrorMsg(`Ungültige Datei: "${file.name}" ist keine gültige osu! Beatmap-Datei. Bitte wähle eine .osz, .zip, ein Video (.mp4 / .webm) oder eine Replay-Datei.`);
+      setErrorMsg(`Ungültige Datei: "${file.name}" ist keine gültige Yada! Beatmap-Datei. Bitte wähle eine .osz oder .zip Datei.`);
       setIsLoading(false);
       return;
     }
@@ -451,26 +358,26 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
       <header className="h-16 border-b border-white/[0.06] px-6 flex items-center justify-between bg-[#14141A] sticky top-0 z-20 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#FF3399] via-[#FF66AA] to-[#FF99CC] flex items-center justify-center shadow-[0_0_20px_rgba(255,51,153,0.4)] border border-white/20 hover:scale-105 active:scale-95 transition-all cursor-pointer animate-pulse duration-[3000ms]">
-              <span className="text-white font-extrabold italic text-2xl -mt-0.5 select-none transition-transform hover:rotate-12 duration-200">o!</span>
+            <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#00CFFF] via-[#00E8FF] to-[#33EFFF] flex items-center justify-center shadow-[0_0_20px_rgba(0,232,255,0.4)] border border-white/20 hover:scale-105 active:scale-95 transition-all cursor-pointer animate-pulse duration-[3000ms]">
+              <span className="text-white font-extrabold italic text-2xl -mt-0.5 select-none transition-transform hover:rotate-12 duration-200">Y!</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-sm font-black tracking-widest text-white leading-none">osu!</span>
-              <span className="text-[10px] font-bold tracking-widest text-[#FF66AA] uppercase leading-none opacity-90 mt-0.5">lazer-touch</span>
+              <span className="text-sm font-black tracking-widest text-white leading-none">Yada!</span>
+              <span className="text-[10px] font-bold tracking-widest text-[#00E8FF] uppercase leading-none opacity-90 mt-0.5">Web-Version</span>
             </div>
           </div>
           <div className="hidden md:flex gap-1 h-8 items-center bg-black/30 border border-white/5 rounded-lg p-0.5 ml-4">
             <button 
               onClick={() => onUpdateSettings({ ...settings, gameMode: 'standard' })}
-              className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${(!settings.gameMode || settings.gameMode === 'standard') ? 'bg-[#FF66AA]/10 text-[#FF66AA]' : 'text-gray-400 hover:text-white'}`}
+              className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${(!settings.gameMode || settings.gameMode === 'standard') ? 'bg-[#00E8FF]/10 text-[#00E8FF]' : 'text-gray-400 hover:text-white'}`}
             >
-              OSU!
+              YADA!
             </button>
             <button 
               onClick={() => onUpdateSettings({ ...settings, gameMode: 'mania' })}
-              className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${settings.gameMode === 'mania' ? 'bg-[#FF66AA]/10 text-[#FF66AA]' : 'text-gray-400 hover:text-white'}`}
+              className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${settings.gameMode === 'mania' ? 'bg-[#00E8FF]/10 text-[#00E8FF]' : 'text-gray-400 hover:text-white'}`}
             >
-              OSU!MANIA
+              YADA!MANIA
             </button>
           </div>
         </div>
@@ -484,7 +391,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
             placeholder="Suche Songs, Artists, Mappers..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#1B1B22] border border-white/[0.07] rounded-full pl-10 pr-4 py-2 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-[#FF66AA]/50 focus:ring-1 focus:ring-[#FF66AA]/20 transition-all font-medium"
+            className="w-full bg-[#1B1B22] border border-white/[0.07] rounded-full pl-10 pr-4 py-2 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-[#00E8FF]/50 focus:ring-1 focus:ring-[#00E8FF]/20 transition-all font-medium"
           />
         </div>
 
@@ -494,7 +401,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
             onClick={() => setShowSettingsDrawer(!showSettingsDrawer)}
             className="flex items-center gap-1.5 px-4 py-2 bg-[#1C1C24] hover:bg-[#252530] active:scale-95 border border-white/10 rounded-xl text-xs font-semibold tracking-wide text-gray-200 transition-colors cursor-pointer"
           >
-            <Settings className="w-4 h-4 text-[#FF66AA]" />
+            <Settings className="w-4 h-4 text-[#00E8FF]" />
             <span className="hidden sm:inline">Einstellungen</span>
           </button>
         </div>
@@ -512,7 +419,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
             onDragOver={handleDragOver}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className="border border-dashed border-white/15 hover:border-[#FF66AA]/40 rounded-2xl flex flex-col items-center justify-center p-6 bg-[#16161F]/60 hover:bg-[#16161F]/90 transition-all cursor-pointer group shadow-[0_8px_30px_rgba(0,0,0,0.4)] gap-4"
+            className="border border-dashed border-white/15 hover:border-[#00E8FF]/40 rounded-2xl flex flex-col items-center justify-center p-6 bg-[#16161F]/60 hover:bg-[#16161F]/90 transition-all cursor-pointer group shadow-[0_8px_30px_rgba(0,0,0,0.4)] gap-4"
           >
             <input
               type="file"
@@ -521,12 +428,12 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               onChange={handleFileChange}
             />
             <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform border border-white/5">
-              <Upload className="w-6 h-6 text-[#FF66AA]" />
+              <Upload className="w-6 h-6 text-[#00E8FF]" />
             </div>
             <div className="text-center">
-              <p className="font-extrabold text-white uppercase tracking-widest text-xs">Importiere eigene Songs, Videos & Replays</p>
+              <p className="font-extrabold text-white uppercase tracking-widest text-xs">Importiere eigene Songs</p>
               <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto leading-relaxed">
-                Ziehe deine <span className="text-[#FF66AA] font-bold font-mono text-[11px]">.osz / .zip</span> Songs, <span className="text-[#FF66AA] font-bold font-mono text-[11px]">.mp4 / .webm</span> Hintergrund-Videos oder <span className="text-[#FF66AA] font-bold font-mono text-[11px]">.json</span> Replays hierhin.
+                Ziehe deine <span className="text-[#00E8FF] font-bold font-mono text-[11px]">.osz / .zip</span> Songs hierhin.
               </p>
             </div>
           </div>
@@ -534,7 +441,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
           {/* List of Maps */}
           <div className="flex flex-col gap-3">
             <div className="flex justify-between items-center px-1">
-              <h2 className="text-xs font-bold tracking-widest text-[#FF66AA] uppercase font-mono">SONG AUSWAHL</h2>
+              <h2 className="text-xs font-bold tracking-widest text-[#00E8FF] uppercase font-mono">SONG AUSWAHL</h2>
               {searchQuery && (
                 <span className="text-[10px] text-gray-500 font-mono">
                   {filteredGroups.length} von {mapGroups.length} Treffern
@@ -564,7 +471,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                       }}
                       className={`p-4 rounded-xl border flex flex-col justify-between text-left transition-all relative overflow-hidden group min-h-[92px] cursor-pointer ${
                         isSelected
-                          ? 'border-[#FF66AA] bg-[#1E1E28] shadow-[0_0_25px_rgba(255,102,170,0.18)] border-l-4 border-l-[#FF66AA]'
+                          ? 'border-[#00E8FF] bg-[#1E1E28] shadow-[0_0_25px_rgba(0,232,255,0.18)] border-l-4 border-l-[#00E8FF]'
                           : 'border-white/[0.04] bg-[#14141A]/85 hover:bg-[#1C1C24] hover:border-white/10'
                       }`}
                     >
@@ -584,13 +491,13 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                         <div className="flex items-center gap-4 relative z-10">
                           <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
                             isSelected
-                              ? 'bg-[#FF66AA]/25 text-[#FF66AA] scale-105'
+                              ? 'bg-[#00E8FF]/25 text-[#00E8FF] scale-105'
                               : 'bg-white/5 text-gray-400 group-hover:text-white'
                           }`}>
                             <Music className="w-5 h-5 animate-pulse" />
                           </div>
                           <div>
-                            <h3 className="font-extrabold text-white tracking-tight text-sm line-clamp-1 group-hover:text-[#FF66AA] transition-colors">{group.title}</h3>
+                            <h3 className="font-extrabold text-white tracking-tight text-sm line-clamp-1 group-hover:text-[#00E8FF] transition-colors">{group.title}</h3>
                             <p className="text-xs text-gray-400 mt-0.5 line-clamp-1 font-semibold">{group.artist}</p>
                             
                             {/* osu!lazer difficulty mini colored dots for immediate selection feedback */}
@@ -618,26 +525,11 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                         <div className="text-right flex items-center gap-2 relative z-10" onClick={(e) => e.stopPropagation()}>
                           <span className={`text-[10px] px-2.5 py-1 border rounded-full font-mono font-extrabold tracking-wide ${
                             isSelected
-                              ? 'bg-[#FF66AA]/10 text-[#FF66AA] border-[#FF66AA]/30'
+                              ? 'bg-[#00E8FF]/10 text-[#00E8FF] border-[#00E8FF]/30'
                               : 'bg-white/5 text-gray-400 border-white/10'
                           }`}>
                             {group.versions.length} DIFFS
                           </span>
-
-                          {/* REPLAY BUTTON */}
-                          {group.versions.some(v => getReplaysForBeatmap(v.id).length > 0) && (
-                            <button
-                              id={`btn-replays-${originalIdx}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveReplayModalGroup(group);
-                              }}
-                              className="p-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-[#FF66AA]/25 hover:border-[#FF66AA]/30 hover:text-[#FF66AA] text-gray-300 transition-all flex items-center justify-center min-w-[28px] cursor-pointer"
-                              title="Replays anzeigen"
-                            >
-                              <Tv className="w-3.5 h-3.5" />
-                            </button>
-                          )}
                           
                           {group.fileName && (
                             <span
@@ -675,7 +567,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                                   <span className="font-extrabold text-sm ml-0.5 leading-none">{currentHighScore.score.toLocaleString()}</span>
                                 </div>
                                 <div className="text-[10px] text-gray-400 font-normal self-start sm:self-auto">
-                                  Combo: <span className="text-[#FF66AA] font-bold">{currentHighScore.maxCombo}x</span> ({currentHighScore.accuracy}%)
+                                  Combo: <span className="text-[#00E8FF] font-bold">{currentHighScore.maxCombo}x</span> ({currentHighScore.accuracy}%)
                                 </div>
                               </div>
                             ) : (
@@ -696,7 +588,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                                   onClick={() => handleDifficultySelect(originalIdx, subIdx)}
                                   className={`px-2.5 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all border flex items-center gap-1.5 cursor-pointer ${
                                     isSubSelected
-                                      ? 'bg-[#FF66AA] border-[#FF66AA] text-black font-extrabold uppercase shadow-[0_0_10px_rgba(255,102,170,0.3)]'
+                                      ? 'bg-[#00E8FF] border-[#00E8FF] text-black font-extrabold uppercase shadow-[0_0_10px_rgba(0,232,255,0.3)]'
                                       : 'bg-[#14141A] border-white/5 text-gray-300 hover:border-white/15'
                                   }`}
                                 >
@@ -715,7 +607,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                           <div className="flex gap-2 mt-1">
                             <button
                               onClick={() => playBeatmap(originalIdx, selectedVersionIdx)}
-                              className="flex-1 py-2.5 bg-gradient-to-r from-[#FF3388] to-[#FF66AA] hover:brightness-110 active:scale-[0.98] font-extrabold text-[11px] uppercase tracking-wide rounded-xl flex items-center justify-center gap-2 text-white shadow-md transition-all border-t border-white/10"
+                              className="flex-1 py-2.5 bg-gradient-to-r from-[#00CFFF] to-[#00E8FF] hover:brightness-110 active:scale-[0.98] font-extrabold text-[11px] uppercase tracking-wide rounded-xl flex items-center justify-center gap-2 text-white shadow-md transition-all border-t border-white/10"
                             >
                               <Play className="w-3.5 h-3.5 fill-white text-white" />
                               <span>Ausgewählte Diff Starten</span>
@@ -747,9 +639,9 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
 
               {/* Title & Artist with a super polished layout */}
               <div className="relative z-10 border-b border-white/[0.06] pb-4">
-                <span className="text-[10px] font-black font-mono tracking-widest text-[#FF66AA]">AUSGEWÄHLTER SONG</span>
+                <span className="text-[10px] font-black font-mono tracking-widest text-[#00E8FF]">AUSGEWÄHLTER SONG</span>
                 <h2 className="text-2xl font-black tracking-tight text-white mt-1 leading-7 line-clamp-2">{activeGroup.title}</h2>
-                <p className="text-sm text-[#FF66AA] font-bold tracking-wider mt-1">{activeGroup.artist}</p>
+                <p className="text-sm text-[#00E8FF] font-bold tracking-wider mt-1">{activeGroup.artist}</p>
                 <div className="flex gap-4 mt-3 text-[10px] text-gray-450 font-mono uppercase tracking-wider">
                   <span>Mapper: <strong className="text-gray-300 font-semibold">{activeGroup.creator || 'Unbekannt'}</strong></span>
                 </div>
@@ -769,7 +661,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                         onClick={() => handleDifficultySelect(selectedGroupIdx, idx)}
                         className={`px-3 py-2 rounded-xl text-xs font-bold tracking-wide transition-all border flex items-center gap-1.5 cursor-pointer ${
                           isSelected
-                            ? 'bg-[#FF66AA] border-[#FF66AA] text-black font-black uppercase shadow-[0_0_15px_rgba(255,102,170,0.35)] scale-105'
+                            ? 'bg-[#00E8FF] border-[#00E8FF] text-black font-black uppercase shadow-[0_0_15px_rgba(0,232,255,0.35)] scale-105'
                             : 'bg-[#1C1C24] border-white/5 hover:border-white/15 text-gray-300'
                         }`}
                       >
@@ -804,10 +696,10 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                 <div className="flex flex-col">
                   <div className="flex justify-between items-center text-[10px] font-bold">
                     <span className="text-gray-400 font-bold tracking-wider">APPROACH RATE (AR)</span>
-                    <span className="text-[#FF66AA] text-xs font-black">{activeVersion.approachRate}</span>
+                    <span className="text-[#00E8FF] text-xs font-black">{activeVersion.approachRate}</span>
                   </div>
                   <div className="h-1.5 bg-white/5 rounded-full overflow-hidden mt-1.5 p-0.5">
-                    <div className="h-full bg-[#FF66AA] rounded-full shadow-[0_0_8px_rgb(255,102,170)]" style={{ width: `${activeVersion.approachRate * 10}%` }} />
+                    <div className="h-full bg-[#00E8FF] rounded-full shadow-[0_0_8px_rgb(0,232,255)]" style={{ width: `${activeVersion.approachRate * 10}%` }} />
                   </div>
                 </div>
 
@@ -917,7 +809,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                 </div>
                 {activeHighScore && (
                   <div className="text-right text-xs font-mono text-gray-300">
-                    <div>Max Combo: <span className="text-[#FF66AA] font-bold">{activeHighScore.maxCombo}x</span></div>
+                    <div>Max Combo: <span className="text-[#00E8FF] font-bold">{activeHighScore.maxCombo}x</span></div>
                     <div>Präzision: <span className="text-cyan-400 font-extrabold">{activeHighScore.accuracy}%</span></div>
                   </div>
                 )}
@@ -927,7 +819,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               <button
                 id="btn-start-playing"
                 onClick={handleStartPlay}
-                className="w-full py-4 bg-gradient-to-r from-[#FF3388] via-[#FF66AA] to-[#FF88CC] hover:from-[#ff55a3] hover:to-[#ffa6db] active:scale-[0.98] font-black text-xl italic tracking-tight rounded-2xl flex items-center justify-center gap-3 text-white shadow-[0_0_35px_rgba(255,51,153,0.45)] hover:shadow-[0_0_45px_rgba(255,51,153,0.6)] transition-all relative z-10 cursor-pointer uppercase border-t border-white/20 duration-200"
+                className="w-full py-4 bg-gradient-to-r from-[#00CFFF] via-[#00E8FF] to-[#FF88CC] hover:from-[#ff55a3] hover:to-[#ffa6db] active:scale-[0.98] font-black text-xl italic tracking-tight rounded-2xl flex items-center justify-center gap-3 text-white shadow-[0_0_35px_rgba(0,187,255,0.45)] hover:shadow-[0_0_45px_rgba(0,187,255,0.6)] transition-all relative z-10 cursor-pointer uppercase border-t border-white/20 duration-200"
               >
                 <Play className="w-6 h-6 fill-white text-white" />
                 <span className="font-extrabold tracking-wider drop-shadow-md">LET&apos;S GO (PLAY)</span>
@@ -941,8 +833,8 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
           )}
 
           {/* Quick Info help box */}
-          <div className="border border-[#FF66AA]/10 bg-[#FF66AA]/5 rounded-2xl p-5 flex gap-4">
-            <HelpCircle className="w-5 h-5 text-[#FF66AA] shrink-0 mt-0.5" />
+          <div className="border border-[#00E8FF]/10 bg-[#00E8FF]/5 rounded-2xl p-5 flex gap-4">
+            <HelpCircle className="w-5 h-5 text-[#00E8FF] shrink-0 mt-0.5" />
             <div className="text-xs text-gray-400 flex flex-col gap-3 leading-relaxed">
               <span className="font-bold text-gray-200 tracking-wide">Führungsgesten &amp; Tapping</span>
               <p>
@@ -955,7 +847,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               <div className="border-t border-white/10 my-1.5 pt-2">
                 <span className="font-bold text-gray-200 tracking-wide block mb-1">iPad &amp; iOS FAQ: Gelöschte Songs &amp; Lokaler Start</span>
                 <p className="mb-2">
-                  <strong className="text-[#FF66AA]">Warum verschwinden importierte Songs nach einer Weile?</strong><br />
+                  <strong className="text-[#00E8FF]">Warum verschwinden importierte Songs nach einer Weile?</strong><br />
                   iOS und iPadOS löschen Browserdaten (IndexedDB) ungenutzter Webseiten nach 7 Tagen Inaktivität, um Speicher zu sparen. Um das zu verhindern, klicke im Safari auf den <strong>Teilen-Button &gt; &quot;Zum Home-Bildschirm hinzufügen&quot;</strong>. Als installierte PWA speichert iOS deine Daten dauerhaft. Alternativ kannst du deine <code className="bg-white/5 px-1 rounded">.osz</code>-Dateien jederzeit in Sekundenschnelle wieder hineinziehen (vollkommen offline!).
                 </p>
                 <p>
@@ -975,7 +867,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
             
             {/* Drawer Close */}
             <div className="flex items-center justify-between mb-8 pb-4 border-b border-white/15">
-              <div className="flex items-center gap-2 text-[#FF66AA]">
+              <div className="flex items-center gap-2 text-[#00E8FF]">
                 <Sliders className="w-5 h-5" />
                 <h3 className="font-bold text-base text-white">Spieleinstellungen</h3>
               </div>
@@ -993,18 +885,18 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-xl p-4">
                 <div>
                   <h4 className="font-semibold text-white">Spielmodus</h4>
-                  <p className="text-xs text-gray-400 mt-0.5">Wechsle zwischen osu! und osu!mania</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Wechsle zwischen Yada! und Yada!mania</p>
                 </div>
                 <div className="flex gap-1 bg-black/30 border border-white/5 rounded-lg p-0.5">
                   <button 
                     onClick={() => onUpdateSettings({ ...settings, gameMode: 'standard' })}
-                    className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${(!settings.gameMode || settings.gameMode === 'standard') ? 'bg-[#FF66AA]/10 text-[#FF66AA]' : 'text-gray-400 hover:text-white'}`}
+                    className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${(!settings.gameMode || settings.gameMode === 'standard') ? 'bg-[#00E8FF]/10 text-[#00E8FF]' : 'text-gray-400 hover:text-white'}`}
                   >
                     osu!
                   </button>
                   <button 
                     onClick={() => onUpdateSettings({ ...settings, gameMode: 'mania' })}
-                    className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${settings.gameMode === 'mania' ? 'bg-[#FF66AA]/10 text-[#FF66AA]' : 'text-gray-400 hover:text-white'}`}
+                    className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${settings.gameMode === 'mania' ? 'bg-[#00E8FF]/10 text-[#00E8FF]' : 'text-gray-400 hover:text-white'}`}
                   >
                     mania
                   </button>
@@ -1016,12 +908,12 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                 <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-xl p-4">
                   <div>
                     <h4 className="font-semibold text-white">Mobiler Modus (Mobile Mode)</h4>
-                    <p className="text-xs text-gray-400 mt-0.5">Optimierte osu!mania UI mit Touch-Knöpfen für mobile Geräte</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Optimierte Yada!mania UI mit Touch-Knöpfen für mobile Geräte</p>
                   </div>
                   <button
                     onClick={() => toggleSettingBool('maniaMobileMode')}
                     className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
-                      settings.maniaMobileMode ? 'bg-[#FF66AA] shadow-[0_0_10px_rgba(255,102,170,0.4)]' : 'bg-white/10'
+                      settings.maniaMobileMode ? 'bg-[#00E8FF] shadow-[0_0_10px_rgba(0,232,255,0.4)]' : 'bg-white/10'
                     }`}
                   >
                     <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
@@ -1041,7 +933,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                   id="btn-toggle-replaysystem"
                   onClick={() => toggleSettingBool('enableReplays')}
                   className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
-                    settings.enableReplays ? 'bg-[#FF66AA] shadow-[0_0_10px_rgba(255,102,170,0.4)]' : 'bg-white/10'
+                    settings.enableReplays ? 'bg-[#00E8FF] shadow-[0_0_10px_rgba(0,232,255,0.4)]' : 'bg-white/10'
                   }`}
                 >
                   <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
@@ -1060,7 +952,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                   id="btn-toggle-hitsounds"
                   onClick={() => toggleSettingBool('hitsounds')}
                   className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
-                    settings.hitsounds ? 'bg-[#FF66AA] shadow-[0_0_10px_rgba(255,102,170,0.4)]' : 'bg-white/10'
+                    settings.hitsounds ? 'bg-[#00E8FF] shadow-[0_0_10px_rgba(0,232,255,0.4)]' : 'bg-white/10'
                   }`}
                 >
                   <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
@@ -1073,10 +965,10 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               <div className="flex flex-col bg-white/[0.01] border border-white/5 rounded-xl p-4 gap-3">
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-semibold">Spiel-Gesamtlautstärke</span>
-                  <span className="font-mono text-[#FF66AA] font-bold">{Math.round(settings.volume * 100)}%</span>
+                  <span className="font-mono text-[#00E8FF] font-bold">{Math.round(settings.volume * 100)}%</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  {settings.volume === 0 ? <VolumeX className="w-5 h-5 text-gray-400" /> : <Volume2 className="w-5 h-5 text-[#FF66AA]" />}
+                  {settings.volume === 0 ? <VolumeX className="w-5 h-5 text-gray-400" /> : <Volume2 className="w-5 h-5 text-[#00E8FF]" />}
                   <input
                     id="input-settings-volume"
                     type="range"
@@ -1085,7 +977,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     step="0.05"
                     value={settings.volume}
                     onChange={(e) => updateSettingNum('volume', parseFloat(e.target.value))}
-                    className="flex-1 accent-[#FF66AA] bg-white/10 h-1.5 rounded-lg cursor-pointer [outline:none]"
+                    className="flex-1 accent-[#00E8FF] bg-white/10 h-1.5 rounded-lg cursor-pointer [outline:none]"
                   />
                 </div>
               </div>
@@ -1094,10 +986,10 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               <div className="flex flex-col bg-white/[0.01] border border-white/5 rounded-xl p-4 gap-3">
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-semibold">Hintergrund-Abdunkelung</span>
-                  <span className="font-mono text-[#FF66AA] font-bold">{settings.dimLevel}%</span>
+                  <span className="font-mono text-[#00E8FF] font-bold">{settings.dimLevel}%</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <EyeOff className="w-5 h-5 text-[#FF66AA]" />
+                  <EyeOff className="w-5 h-5 text-[#00E8FF]" />
                   <input
                     id="input-settings-dim"
                     type="range"
@@ -1106,7 +998,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     step="5"
                     value={settings.dimLevel}
                     onChange={(e) => updateSettingNum('dimLevel', parseInt(e.target.value))}
-                    className="flex-1 accent-[#FF66AA] bg-white/10 h-1.5 rounded-lg cursor-pointer [outline:none]"
+                    className="flex-1 accent-[#00E8FF] bg-white/10 h-1.5 rounded-lg cursor-pointer [outline:none]"
                   />
                 </div>
               </div>
@@ -1121,7 +1013,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                   id="btn-toggle-autoscale"
                   onClick={() => toggleSettingBool('autoScaleField')}
                   className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
-                    settings.autoScaleField ? 'bg-[#FF66AA] shadow-[0_0_10px_rgba(255,102,170,0.4)]' : 'bg-white/10'
+                    settings.autoScaleField ? 'bg-[#00E8FF] shadow-[0_0_10px_rgba(0,232,255,0.4)]' : 'bg-white/10'
                   }`}
                 >
                   <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
@@ -1136,7 +1028,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                   <span className="font-semibold text-white">
                     {settings.autoScaleField ? 'Trigger-Objekte Skalierung' : 'Spielfeld & UI-Skalierung'}
                   </span>
-                  <span className="font-mono text-[#FF66AA] font-bold">{Math.round(settings.uiScale * 100)}%</span>
+                  <span className="font-mono text-[#00E8FF] font-bold">{Math.round(settings.uiScale * 100)}%</span>
                 </div>
                 <p className="text-xs text-gray-400 -mt-1.5">
                   {settings.autoScaleField 
@@ -1144,7 +1036,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     : 'Skaliert das gesamte Spielfeld inklusive aller Symbole starr'}
                 </p>
                 <div className="flex items-center gap-3">
-                  <Sliders className="w-5 h-5 text-[#FF66AA]" />
+                  <Sliders className="w-5 h-5 text-[#00E8FF]" />
                   <input
                     id="input-settings-uiscale"
                     type="range"
@@ -1153,7 +1045,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     step="0.05"
                     value={settings.uiScale || 1.0}
                     onChange={(e) => updateSettingNum('uiScale', parseFloat(e.target.value))}
-                    className="flex-1 accent-[#FF66AA] bg-white/10 h-1.5 rounded-lg cursor-pointer [outline:none]"
+                    className="flex-1 accent-[#00E8FF] bg-white/10 h-1.5 rounded-lg cursor-pointer [outline:none]"
                   />
                 </div>
               </div>
@@ -1162,13 +1054,13 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               <div className="flex flex-col bg-white/[0.01] border border-white/5 rounded-xl p-4 gap-3">
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-semibold text-white">Audio-Latenz-Ausgleich (Offset)</span>
-                  <span className="font-mono text-[#FF66AA] font-bold">{settings.audioOffset > 0 ? '+' : ''}{settings.audioOffset} ms</span>
+                  <span className="font-mono text-[#00E8FF] font-bold">{settings.audioOffset > 0 ? '+' : ''}{settings.audioOffset} ms</span>
                 </div>
                 <p className="text-xs text-gray-400 -mt-1.5">
                   Gleicht Verzögerungen aus (empfohlen: positive Werte über +50ms für Bluetooth-Audiogeräte).
                 </p>
                 <div className="flex items-center gap-3">
-                  <Sliders className="w-5 h-5 text-[#FF66AA]" />
+                  <Sliders className="w-5 h-5 text-[#00E8FF]" />
                   <input
                     id="input-settings-audio-offset"
                     type="range"
@@ -1177,7 +1069,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     step="5"
                     value={settings.audioOffset !== undefined ? settings.audioOffset : 0}
                     onChange={(e) => updateSettingNum('audioOffset', parseInt(e.target.value))}
-                    className="flex-1 accent-[#FF66AA] bg-white/10 h-1.5 rounded-lg cursor-pointer [outline:none]"
+                    className="flex-1 accent-[#00E8FF] bg-white/10 h-1.5 rounded-lg cursor-pointer [outline:none]"
                   />
                 </div>
               </div>
@@ -1192,7 +1084,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                   id="btn-toggle-keyboard"
                   onClick={() => toggleSettingBool('useKeyboard')}
                   className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
-                    settings.useKeyboard ? 'bg-[#FF66AA] shadow-[0_0_10px_rgba(255,102,170,0.4)]' : 'bg-white/10'
+                    settings.useKeyboard ? 'bg-[#00E8FF] shadow-[0_0_10px_rgba(0,232,255,0.4)]' : 'bg-white/10'
                   }`}
                   disabled={settings.disableClicking}
                   style={settings.disableClicking ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
@@ -1213,7 +1105,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                   id="btn-toggle-disable-clicking"
                   onClick={() => toggleSettingBool('disableClicking')}
                   className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
-                    settings.disableClicking ? 'bg-[#FF66AA] shadow-[0_0_10px_rgba(255,102,170,0.4)]' : 'bg-white/10'
+                    settings.disableClicking ? 'bg-[#00E8FF] shadow-[0_0_10px_rgba(0,232,255,0.4)]' : 'bg-white/10'
                   }`}
                 >
                   <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
@@ -1232,7 +1124,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                   id="btn-toggle-touch-controls"
                   onClick={() => toggleSettingBool('touchControls')}
                   className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
-                    settings.touchControls ? 'bg-[#FF66AA] shadow-[0_0_10px_rgba(255,102,170,0.4)]' : 'bg-white/10'
+                    settings.touchControls ? 'bg-[#00E8FF] shadow-[0_0_10px_rgba(0,232,255,0.4)]' : 'bg-white/10'
                   }`}
                 >
                   <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
@@ -1245,7 +1137,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               <div className="flex flex-col bg-[#111118] border border-white/5 rounded-xl p-4 gap-3">
                 <div className="flex justify-between items-center pb-2 border-b border-white/5">
                   <h4 className="font-semibold text-white text-xs tracking-wider uppercase">Skin / Design-Auswahl</h4>
-                  <span className="text-[9px] text-[#FF66AA] font-bold uppercase tracking-wider bg-[#FF66AA]/10 px-1.5 py-0.5 rounded border border-[#FF66AA]/10 font-mono">NEU</span>
+                  <span className="text-[9px] text-[#00E8FF] font-bold uppercase tracking-wider bg-[#00E8FF]/10 px-1.5 py-0.5 rounded border border-[#00E8FF]/10 font-mono">NEU</span>
                 </div>
                 
                 <div className="grid grid-cols-5 gap-1.5">
@@ -1255,7 +1147,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     }}
                     className={`py-2 px-0.5 rounded-xl text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
                       settings.skinPreset === 'argon' 
-                        ? 'bg-[#FF66AA]/25 border-[#FF66AA] text-white shadow-[0_0_10px_rgba(255,102,170,0.2)]' 
+                        ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
                         : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
                     }`}
                   >
@@ -1268,7 +1160,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     }}
                     className={`py-2 px-0.5 rounded-xl text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
                       settings.skinPreset === 'lazer' 
-                        ? 'bg-[#FF66AA]/25 border-[#FF66AA] text-white shadow-[0_0_10px_rgba(255,102,170,0.2)]' 
+                        ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
                         : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
                     }`}
                   >
@@ -1281,7 +1173,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     }}
                     className={`py-2 px-0.5 rounded-xl text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
                       settings.skinPreset === 'whitecat' 
-                        ? 'bg-[#FF66AA]/25 border-[#FF66AA] text-white shadow-[0_0_10px_rgba(255,102,170,0.2)]' 
+                        ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
                         : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
                     }`}
                   >
@@ -1294,7 +1186,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     }}
                     className={`py-2 px-0.5 rounded-xl text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
                       settings.skinPreset === 'classic' 
-                        ? 'bg-[#FF66AA]/25 border-[#FF66AA] text-white shadow-[0_0_10px_rgba(255,102,170,0.2)]' 
+                        ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
                         : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
                     }`}
                   >
@@ -1317,7 +1209,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     }}
                     className={`py-2 px-0.5 rounded-xl text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
                       settings.skinPreset === 'custom' 
-                        ? 'bg-[#FF66AA]/25 border-[#FF66AA] text-white shadow-[0_0_10px_rgba(255,102,170,0.2)]' 
+                        ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
                         : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
                     }`}
                   >
@@ -1450,132 +1342,10 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
             </div>
 
             {/* Footer drawer copyright */}
-            <div className="border-t border-white/10 pt-4 text-center text-xs text-gray-500 font-mono mt-8">
-              osu! Touch Player • Offline Synthesizer
+            <div className="border-t border-white/10 pt-4 text-center text-xs text-gray-500 font-mono mt-8 leading-relaxed">
+              This Project is heavily based on and inspired by <a href="https://osu.ppy.sh/" target="_blank" rel="noopener noreferrer" className="text-[#00E8FF] hover:underline">Dean Herberts Osu! Game.</a><br/>
+              Plz go ahead and <a href="https://osu.ppy.sh/home/support" target="_blank" rel="noopener noreferrer" className="text-[#00E8FF] hover:underline">support ihm by buying his supporter Tag or something</a> (now seriously, do it!).
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Replay list Modal - Highly optimized for Mobile & Portrait/Hochformat */}
-      {activeReplayModalGroup && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-[#0D0D12] border border-white/10 w-full max-w-2xl rounded-3xl p-6 shadow-2xl flex flex-col gap-5 max-h-[85vh]">
-            
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-white/10 shrink-0">
-              <div className="flex items-center gap-2 text-[#FF66AA]">
-                <Tv className="w-5 h-5 text-[#FF66AA]" />
-                <h3 className="font-extrabold text-white text-base md:text-lg tracking-tight">Verfügbare Replays</h3>
-              </div>
-              <button
-                onClick={() => setActiveReplayModalGroup(null)}
-                className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white flex items-center justify-center border border-white/5 cursor-pointer select-none"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="shrink-0 flex flex-col gap-1.5 bg-white/[0.02] border border-white/[0.05] p-3 rounded-2xl">
-              <h4 className="font-bold text-white text-sm line-clamp-1">{activeReplayModalGroup.title}</h4>
-              <p className="text-xs text-gray-400 line-clamp-1">{activeReplayModalGroup.artist}</p>
-            </div>
-
-            {/* List Wrapper - Scrollable & Custom styled vertical scrollbar */}
-            <div className="flex-1 overflow-y-auto pr-1.5 custom-scrollbar flex flex-col gap-3 min-h-0">
-              {(() => {
-                const versions = activeReplayModalGroup.versions;
-                const allReplays = versions.flatMap(v => 
-                  getReplaysForBeatmap(v.id).map(r => ({ ...r, verObj: v }))
-                );
-
-                if (allReplays.length === 0) {
-                  return (
-                    <div className="p-8 text-center text-gray-500 text-xs">
-                      Keine Replays vorhanden. Spiele eine Runde im Replay-Modus oder importiere eine JSON-Replay-Datei.
-                    </div>
-                  );
-                }
-
-                return allReplays.map((replay) => {
-                  const rating = getStarRating(replay.verObj);
-                  const ratingColor = getStarColor(rating);
-                  const isDefaultReplay = replay.id.startsWith('default-replay-');
-
-                  return (
-                    <div 
-                      key={replay.id}
-                      className="bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 hover:border-[#FF66AA]/25 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all"
-                    >
-                      <div className="flex flex-col gap-1 flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-black text-sm text-white font-mono truncate">{replay.playerName}</span>
-                          {isDefaultReplay && (
-                            <span className="text-[8px] bg-yellow-405/20 text-yellow-400 border border-yellow-405/20 px-1.5 py-0.5 rounded font-extrabold uppercase font-mono tracking-widest shrink-0">BOT</span>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-gray-400 font-mono mt-0.5">
-                          <span className="text-white/60 bg-white/5 border border-white/5 px-2 py-0.5 rounded flex items-center gap-1">
-                            Difficulty: <span className="font-black text-[#FF65A9]">{replay.verObj.version}</span>
-                          </span>
-                          <span className="text-gray-500 self-center">•</span>
-                          <span 
-                            className="font-extrabold" 
-                            style={{ color: ratingColor }}
-                          >
-                            ★ {rating}
-                          </span>
-                          <span className="text-gray-500 self-center">•</span>
-                          <span>{replay.date}</span>
-                        </div>
-                        
-                        <div className="grid grid-cols-3 gap-2 mt-2 sm:mt-1 font-mono text-[10px] bg-black/25 border border-white/[0.04] p-2 rounded-xl">
-                          <div>
-                            <span className="text-gray-500 block font-bold text-[9px]">PUNKTE</span>
-                            <span className="text-white font-black">{replay.score.toLocaleString()}</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-500 block font-bold text-[9px]">COMBO</span>
-                            <span className="text-[#FF66AA] font-black">{replay.maxCombo}x</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-500 block font-bold text-[9px]">GENAUIGKEIT</span>
-                            <span className="text-cyan-400 font-black">{replay.accuracy}%</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 justify-end shrink-0">
-                        {!isDefaultReplay && (
-                          <button
-                            onClick={() => {
-                              deleteReplay(replay.beatmapId, replay.id);
-                              setDeletedTrigger(prev => prev + 1);
-                            }}
-                            className="p-2 border border-white/5 hover:border-red-500/30 hover:text-red-400 text-gray-500 bg-white/5 hover:bg-red-500/10 rounded-xl transition-all cursor-pointer"
-                            title="Replay löschen"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => playReplay(replay.verObj, replay.playerName)}
-                          className="px-4 py-2 bg-gradient-to-r from-[#FF3388] to-[#FF66AA] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer active:scale-95 hover:brightness-110 flex items-center justify-center gap-1.5 transition-all shadow-[0_0_15px_rgba(255,102,170,0.15)]"
-                        >
-                          <Play className="w-3 h-3 fill-white text-white" />
-                          <span>Watch</span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-
-            <div className="text-center text-[10px] text-gray-400 font-mono shrink-0">
-              * Replays verwenden Autoplay, um den perfekten Durchlauf deines Scores wiederzugeben.
-            </div>
-
           </div>
         </div>
       )}
@@ -1583,10 +1353,10 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
       {/* Loading Overlay spinner */}
       {isLoading && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[150] flex flex-col items-center justify-center gap-4 animate-fade-in animate-duration-100">
-          <div className="w-12 h-12 border-4 border-[#FF66AA]/30 border-t-[#FF66AA] animate-spin rounded-full"></div>
+          <div className="w-12 h-12 border-4 border-[#00E8FF]/30 border-t-[#00E8FF] animate-spin rounded-full"></div>
           <div className="flex flex-col items-center gap-1.5">
             <span className="font-semibold text-white leading-5">Bitte warten</span>
-            <span className="text-sm font-mono text-[#FF66AA]">{loadingStep || 'Lädt Spieldaten...'}</span>
+            <span className="text-sm font-mono text-[#00E8FF]">{loadingStep || 'Lädt Spieldaten...'}</span>
           </div>
         </div>
       )}
