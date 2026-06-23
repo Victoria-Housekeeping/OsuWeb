@@ -107,7 +107,7 @@ export const ScoreScreen: React.FC<ScoreScreenProps> = ({
         }}
       />
 
-      <div className="max-w-2xl w-full border border-white/10 bg-[#16161C] rounded-3xl p-6 md:p-8 flex flex-col gap-8 shadow-2xl relative z-10 animate-fade-in my-auto">
+      <div className="max-w-2xl w-full border border-white/10 bg-[#16161C] rounded-sm p-5 md:p-5 flex flex-col gap-5 shadow-2xl relative z-10 animate-fade-in my-auto">
         
         {/* Head Map Title details */}
         <div className="text-center">
@@ -119,9 +119,9 @@ export const ScoreScreen: React.FC<ScoreScreenProps> = ({
         </div>
 
         {/* Highlight Score with big Grade medal letter */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center">
           
-          <div className={`md:col-span-4 rounded-2xl border bg-[#0D0D10] ${rank.bg} h-40 flex flex-col items-center justify-center p-4 select-none relative group overflow-hidden shadow-inner`}>
+          <div className={`md:col-span-4 rounded-sm border bg-[#0D0D10] ${rank.bg} h-40 flex flex-col items-center justify-center p-4 select-none relative group overflow-hidden shadow-inner`}>
             <span className="text-[10px] font-bold font-mono text-gray-400 absolute top-3 tracking-widest">RANG</span>
             <span className={`text-7xl font-sans font-black italic tracking-tighter ${rank.color} drop-shadow-md`}>
               {rank.grade}
@@ -131,28 +131,28 @@ export const ScoreScreen: React.FC<ScoreScreenProps> = ({
           <div className="md:col-span-8 flex flex-col gap-3">
             
             {isHighscore && (
-              <div className="bg-[#00E8FF]/15 border border-[#00E8FF]/30 text-[#00E8FF] px-4 py-2 rounded-xl text-xs flex items-center gap-2 font-bold uppercase tracking-wider font-mono animate-pulse">
+              <div className="bg-[#00E8FF]/15 border border-[#00E8FF]/30 text-[#00E8FF] px-4 py-2 rounded-sm text-xs flex items-center gap-2 font-bold uppercase tracking-wider font-mono animate-pulse">
                 <Sparkles className="w-4 h-4 fill-[#00E8FF] shrink-0" />
                 <span>NEUER PERSÖNLICHER BESTWERT!</span>
               </div>
             )}
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-[#0D0D10] border border-white/5 p-4 rounded-xl">
+              <div className="bg-[#0D0D10] border border-white/5 p-4 rounded-sm">
                 <span className="text-[10px] font-bold font-mono text-gray-400 tracking-wider">PUNKTE</span>
                 <div className="text-2xl font-black tracking-tight text-white mt-1 font-mono">
                   {stats.score.toLocaleString()}
                 </div>
               </div>
 
-              <div className="bg-[#0D0D10] border border-white/5 p-4 rounded-xl">
+              <div className="bg-[#0D0D10] border border-white/5 p-4 rounded-sm">
                 <span className="text-[10px] font-bold font-mono text-gray-400 tracking-wider">GENAUIGKEIT</span>
                 <div className="text-2xl font-black tracking-tight text-cyan-400 mt-1 font-mono">
                   {accuracy}%
                 </div>
               </div>
 
-              <div className="bg-[#0D0D10] border border-white/5 p-4 rounded-xl col-span-2 flex items-center justify-between">
+              <div className="bg-[#0D0D10] border border-white/5 p-4 rounded-sm col-span-2 flex items-center justify-between">
                 <div>
                   <span className="text-[10px] font-bold font-mono text-gray-400 tracking-wider">MAXIMALE COMBO</span>
                   <div className="text-xl font-bold tracking-tight text-[#00E8FF] mt-0.5 font-mono">
@@ -172,22 +172,22 @@ export const ScoreScreen: React.FC<ScoreScreenProps> = ({
           
           <div className="grid grid-cols-4 gap-3 text-center">
             
-            <div className="bg-green-500/5 border border-green-500/20 p-3 rounded-xl flex flex-col gap-0.5">
+            <div className="bg-green-500/5 border border-green-500/20 p-3 rounded-sm flex flex-col gap-0.5">
               <span className="text-xs font-bold text-green-400 font-mono">300</span>
               <span className="text-lg font-black font-mono text-white">{stats.hits300}</span>
             </div>
 
-            <div className="bg-blue-500/5 border border-blue-500/20 p-3 rounded-xl flex flex-col gap-0.5">
+            <div className="bg-blue-500/5 border border-blue-500/20 p-3 rounded-sm flex flex-col gap-0.5">
               <span className="text-xs font-bold text-blue-400 font-mono">100</span>
               <span className="text-lg font-black font-mono text-white">{stats.hits100}</span>
             </div>
 
-            <div className="bg-yellow-500/5 border border-yellow-500/20 p-3 rounded-xl flex flex-col gap-0.5">
+            <div className="bg-yellow-500/5 border border-yellow-500/20 p-3 rounded-sm flex flex-col gap-0.5">
               <span className="text-xs font-bold text-yellow-400 font-mono">50</span>
               <span className="text-lg font-black font-mono text-white">{stats.hits50}</span>
             </div>
 
-            <div className="bg-red-500/5 border border-red-500/20 p-3 rounded-xl flex flex-col gap-0.5">
+            <div className="bg-red-500/5 border border-red-500/20 p-3 rounded-sm flex flex-col gap-0.5">
               <span className="text-xs font-bold text-red-500 font-mono">Miss</span>
               <span className="text-lg font-black font-mono text-white">{stats.misses}</span>
             </div>
@@ -199,7 +199,7 @@ export const ScoreScreen: React.FC<ScoreScreenProps> = ({
           <button
             id="btn-score-retry"
             onClick={onRetry}
-            className="flex-1 py-3 bg-[#00E8FF] hover:bg-[#33EFFF] active:scale-95 text-black font-black uppercase text-sm tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,232,255,0.3)] cursor-pointer"
+            className="flex-1 py-3 bg-[#00E8FF] hover:bg-[#33EFFF] active:scale-95 text-black font-black uppercase text-sm tracking-wider rounded-sm transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,232,255,0.3)] cursor-pointer"
           >
             <RotateCcw className="w-4 h-4 text-black stroke-[3px]" />
             <span>Wiederholen</span>
@@ -208,7 +208,7 @@ export const ScoreScreen: React.FC<ScoreScreenProps> = ({
           <button
             id="btn-score-home"
             onClick={onHome}
-            className="flex-1 py-3 bg-[#111114] hover:bg-[#1a1a20] active:scale-95 text-gray-200 border border-white/10 font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className="flex-1 py-3 bg-[#111114] hover:bg-[#1a1a20] active:scale-95 text-gray-200 border border-white/10 font-bold rounded-sm text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <Home className="w-4 h-4 text-gray-400" />
             <span>Songauswahl</span>

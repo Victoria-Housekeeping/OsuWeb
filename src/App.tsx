@@ -28,6 +28,9 @@ export default function App() {
     autoScaleField: true,
     audioOffset: 0,
     skinPreset: 'lazer',
+    disableRoundedCorners: true,
+    randomKidMode: false,
+    enableReplays: true,
   };
 
   const [settings, setSettings] = useState<GameSettings>(() => {
@@ -302,6 +305,41 @@ export default function App() {
 
   return (
     <div className="absolute inset-0 bg-[#06060c] select-none text-white overflow-hidden">
+      {settings.disableRoundedCorners && (
+        <style dangerouslySetInnerHTML={{ __html: `
+          .rounded-sm, .rounded, .rounded-md, .rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl, 
+          .rounded-t-sm, .rounded-b-sm, .rounded-l-sm, .rounded-r-sm, .rounded-t-md, .rounded-t-lg, 
+          .rounded-t-xl, .rounded-t-2xl, .rounded-t-3xl {
+            border-radius: 0px !important;
+          }
+        `}} />
+      )}
+      {settings.randomKidMode && (
+        <style dangerouslySetInnerHTML={{ __html: `
+          .bg-\\[\\#00E8FF\\] { background-color: #A9D3B2 !important; }
+          .text-\\[\\#00E8FF\\] { color: #A9D3B2 !important; }
+          .border-\\[\\#00E8FF\\] { border-color: #A9D3B2 !important; }
+          .shadow-\\[0_0_10px_rgba\\(0\\,232\\,255\\,0\\.4\\)\\] { box-shadow: 0 0 10px rgba(169, 211, 178, 0.4) !important; }
+          .bg-\\[rgba\\(0\\,232\\,255\\,0\\.1\\)\\] { background-color: rgba(169, 211, 178, 0.1) !important; }
+          .border-\\[rgba\\(0\\,232\\,255\\,0\\.3\\)\\] { border-color: rgba(169, 211, 178, 0.3) !important; }
+          .text-\\[#00CFFF\\] { color: #7FB89D !important; }
+          .bg-\\[#00E8FF\\]\\/5 { background-color: rgba(169, 211, 178, 0.05) !important; }
+          .border-\\[#00E8FF\\]\\/10 { border-color: rgba(169, 211, 178, 0.1) !important; }
+          .bg-\\[#00E8FF\\]\\/10 { background-color: rgba(169, 211, 178, 0.1) !important; }
+          .bg-\\[#00E8FF\\]\\/25 { background-color: rgba(169, 211, 178, 0.25) !important; }
+          .hover\\:text-\\[#00E8FF\\]:hover { color: #A9D3B2 !important; }
+          .focus\\:border-\\[#00E8FF\\]:focus { border-color: #A9D3B2 !important; }
+          .focus\\:ring-\\[#00E8FF\\]\\/20:focus { --tw-ring-color: rgba(169, 211, 178, 0.2); }
+          .hover\\:border-\\[#00E8FF\\]\\/40:hover { border-color: rgba(169, 211, 178, 0.4) !important; }
+
+          .hover\\:shadow-\\[0_0_80px_rgba\\(0\\,232\\,255\\,0\\.72\\)\\]:hover { box-shadow: 0 0 80px rgba(169, 211, 178, 0.72) !important; }
+          .shadow-\\[0_0_120px_rgba\\(0\\,232\\,255\\,1\\.0\\)\\] { box-shadow: 0 0 120px rgba(169, 211, 178, 1.0) !important; }
+          .shadow-\\[0_0_60px_rgba\\(0\\,232\\,255\\,0\\.48\\)\\] { box-shadow: 0 0 60px rgba(169, 211, 178, 0.48) !important; }
+          .from-\\[\\#33EFFF\\] { --tw-gradient-from: #BDF6D6 !important; --tw-gradient-to: rgba(189,246,214,0) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+          .via-\\[\\#00E8FF\\] { --tw-gradient-stops: var(--tw-gradient-from), #A9D3B2, var(--tw-gradient-to) !important; }
+          .to-\\[\\#0099FF\\] { --tw-gradient-to: #6AA185 !important; }
+        `}} />
+      )}
       {(view === 'selector' || view === 'intro_and_start') && (
         <BeatmapSelector
           onSelect={handleSelectBeatmap}
@@ -323,6 +361,7 @@ export default function App() {
           trianglesBuffer={trianglesBuffer}
           isLoadingAudio={isLoadingTriangles}
           onInitAudioContext={handleInitAudioContext}
+          settings={settings}
         />
       )}
 

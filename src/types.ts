@@ -84,6 +84,9 @@ export interface GameSettings {
     cursorUrl?: string;
     hitcircleUrl?: string;
   };
+  disableRoundedCorners?: boolean;
+  randomKidMode?: boolean;
+  enableReplays?: boolean;
 }
 
 export interface Replay {

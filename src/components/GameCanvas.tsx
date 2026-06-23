@@ -898,7 +898,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           ctx.fillRect(startX + i * laneWidth, startY, laneWidth, height);
         }
         
-        ctx.fillStyle = isPressed ? '#00E8FF' : '#FFFFFF';
+        ctx.fillStyle = isPressed ? (settings.randomKidMode ? '#A9D3B2' : '#00E8FF') : '#FFFFFF';
         ctx.fillRect(startX + i * laneWidth, startY + height - 20 * scale, laneWidth, 4);
 
         ctx.font = `bold ${14 * scale}px var(--font-sans)`;
@@ -921,7 +921,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const noteY = startY + (height - 20 * scale) * fallRatio;
         const noteHeight = 15 * scale;
 
-        ctx.fillStyle = (lane === 0 || lane === 3) ? '#00E8FF' : '#33EFFF';
+        ctx.fillStyle = (lane === 0 || lane === 3) ? (settings.randomKidMode ? '#A9D3B2' : '#00E8FF') : (settings.randomKidMode ? '#7FB89D' : '#33EFFF');
         ctx.shadowColor = ctx.fillStyle;
         ctx.shadowBlur = 10;
         ctx.fillRect(startX + lane * laneWidth + 2, noteY - noteHeight, laneWidth - 4, noteHeight);
@@ -1591,7 +1591,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               cleanupAudio();
               onClose();
             }}
-            className="flex items-center gap-2 px-3.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs text-gray-200 font-extrabold uppercase tracking-wider transition-all cursor-pointer hover:border-[#00E8FF]/30"
+            className="flex items-center gap-2 px-3.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-sm text-xs text-gray-200 font-extrabold uppercase tracking-wider transition-all cursor-pointer hover:border-[#00E8FF]/30"
           >
             <X className="w-4 h-4 text-[#00E8FF]" />
             <span>Beenden</span>
@@ -1629,7 +1629,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         
         {/* Giant bottom-left combo counter overlay matching osu!lazer */}
         <div className="absolute bottom-6 left-8 pointer-events-none z-25 select-none font-sans">
-          <div className="flex flex-col items-start bg-black/25 backdrop-blur-sm p-4 rounded-2xl border border-white/5">
+          <div className="flex flex-col items-start bg-black/25 backdrop-blur-sm p-4 rounded-sm border border-white/5">
             <span className="text-[9px] font-black font-mono tracking-widest text-[#FF65A9] uppercase leading-none">COMBO</span>
             <div key={stats.combo} className="text-5xl md:text-6xl font-black italic tracking-tighter text-[#FF65A9] drop-shadow-[0_2px_12px_rgba(0,232,255,0.6)] animate-combo-pop select-none leading-none mt-1.5">
               {stats.combo}<span className="text-2xl font-black not-italic ml-1">x</span>
@@ -1703,7 +1703,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     e.preventDefault();
                     activeManiaKeysRef.current[lane] = false;
                   }}
-                  className="flex-1 bg-white/5 active:bg-white/20 border-t-4 border-[#00E8FF]/80 rounded-t-xl transition-colors backdrop-blur-sm touch-none"
+                  className="flex-1 bg-white/5 active:bg-white/20 border-t-4 border-[#00E8FF]/80 rounded-t-sm transition-colors backdrop-blur-sm touch-none"
                   style={{ touchAction: 'none' }}
                 />
               ))}
@@ -1722,7 +1722,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       {/* Fail Overlay Block */}
       {isFailed && (
-        <div className="absolute inset-0 bg-[#0A0A0C]/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 z-55 animate-fade-in">
+        <div className="absolute inset-0 bg-[#0A0A0C]/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-5 z-55 animate-fade-in">
           <div className="w-16 h-16 rounded-full bg-red-600/10 border border-red-500 flex items-center justify-center text-red-500 mb-4 animate-bounce">
             <Square className="w-8 h-8 fill-red-500" />
           </div>
@@ -1733,7 +1733,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             <button
               id="btn-retry-failed"
               onClick={handleRestart}
-              className="flex items-center gap-2 px-6 py-3 bg-[#00E8FF] hover:bg-[#ff86b8] active:scale-95 text-black font-black uppercase text-sm tracking-wider rounded-xl transition-all shadow-[0_0_20px_rgba(0,232,255,0.3)] cursor-pointer"
+              className="flex items-center gap-2 px-6 py-3 bg-[#00E8FF] hover:bg-[#ff86b8] active:scale-95 text-black font-black uppercase text-sm tracking-wider rounded-sm transition-all shadow-[0_0_20px_rgba(0,232,255,0.3)] cursor-pointer"
             >
               <RotateCcw className="w-4 h-4 stroke-[3px]" />
               <span>Retry</span>
@@ -1741,7 +1741,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             <button
               id="btn-quit-failed"
               onClick={onClose}
-              className="flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 active:scale-95 text-gray-300 border border-white/10 font-semibold rounded-xl text-sm transition-all cursor-pointer"
+              className="flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 active:scale-95 text-gray-300 border border-white/10 font-semibold rounded-sm text-sm transition-all cursor-pointer"
             >
               <X className="w-4 h-4" />
               <span>Verlassen</span>
@@ -1779,7 +1779,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           <button 
             id="btn-pause-toggle"
             onClick={handleTogglePlay}
-            className="flex items-center gap-1.5 px-3 py-1 bg-[#16161C] hover:bg-[#1f1f26] text-gray-300 rounded-lg border border-white/10 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1 bg-[#16161C] hover:bg-[#1f1f26] text-gray-300 rounded-sm border border-white/10 transition-colors cursor-pointer"
           >
             {isPlayingState ? (
               <>
@@ -1797,7 +1797,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           <button 
             id="btn-restart-game"
             onClick={handleRestart}
-            className="flex items-center gap-1.5 px-3 py-1 bg-[#16161C] hover:bg-[#1f1f26] text-gray-300 rounded-lg border border-white/10 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1 bg-[#16161C] hover:bg-[#1f1f26] text-gray-300 rounded-sm border border-white/10 transition-colors cursor-pointer"
           >
             <RotateCcw className="w-3 h-3 text-cyan-400" />
             <span>Neustart</span>

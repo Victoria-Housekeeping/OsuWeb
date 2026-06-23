@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Volume2 } from 'lucide-react';
+import { GameSettings } from '../types';
 
 interface IntroAndStartScreenProps {
   onStart: (
@@ -11,13 +12,15 @@ interface IntroAndStartScreenProps {
   trianglesBuffer: AudioBuffer | null;
   isLoadingAudio: boolean;
   onInitAudioContext: () => Promise<{ actx: AudioContext; buffer: AudioBuffer | null }>;
+  settings?: GameSettings;
 }
 
 export function IntroAndStartScreen({
   onStart,
   trianglesBuffer,
   isLoadingAudio,
-  onInitAudioContext
+  onInitAudioContext,
+  settings
 }: IntroAndStartScreenProps) {
   // Intro Phases:
   // - 'check': Verifying browser user activation / initial authorization status
@@ -227,6 +230,17 @@ export function IntroAndStartScreen({
   }, [phase]);
 
   const getRandomOsuColor = () => {
+    if (settings && settings.randomKidMode) {
+      const colors = [
+        '#A9D3B2', // mint green / blonde
+        '#BFE2C6',
+        '#7FB89D',
+        '#BDF6D6',
+        '#E6F5E9'
+      ];
+      return colors[Math.floor(Math.random() * colors.length)];
+    }
+
     const colors = [
       '#00E8FF', // signature pink
       '#ff88cc',
@@ -464,7 +478,7 @@ export function IntroAndStartScreen({
           {introSubPhase === 'outline' && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
               <div className="animate-[introLogoScale_1.5s_cubic-bezier(0.1,0.8,0.2,1)_forwards]">
-                <div className="w-[260px] h-[260px] sm:w-[340px] sm:h-[340px] rounded-full flex flex-col items-center justify-center relative bg-gradient-to-b from-[#33EFFF] via-[#00E8FF] to-[#0099FF] shadow-[0_0_60px_rgba(0,232,255,0.48)] border-[10px] sm:border-[13px] border-white">
+                <div className={`w-[260px] h-[260px] sm:w-[340px] sm:h-[340px] rounded-full flex flex-col items-center justify-center relative ${settings?.randomKidMode ? 'bg-gradient-to-b from-[#BDF6D6] via-[#A9D3B2] to-[#6AA185] shadow-[0_0_60px_rgba(169,211,178,0.48)]' : 'bg-gradient-to-b from-[#33EFFF] via-[#00E8FF] to-[#0099FF] shadow-[0_0_60px_rgba(0,232,255,0.48)]'} border-[10px] sm:border-[13px] border-white`}>
                   <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.22)_0%,rgba(0,0,0,0)_70%)] pointer-events-none" />
                   <div className="text-white text-[110px] sm:text-[140px] font-black italic tracking-tighter select-none font-sans mt-[-10px] leading-none drop-shadow-[0_4px_12px_rgba(0,0,0,0.25)]">Yada!</div>
                 </div>
@@ -489,8 +503,8 @@ export function IntroAndStartScreen({
             style={getCentralLogoStyle()}
             className={`w-[260px] h-[260px] sm:w-[340px] sm:h-[340px] rounded-full flex flex-col items-center justify-center relative cursor-pointer select-none transition-all ${
               isExploding
-                ? 'shadow-[0_0_120px_rgba(0,232,255,1.0)] bg-[#00E8FF]'
-                : 'bg-gradient-to-b from-[#33EFFF] via-[#00E8FF] to-[#0099FF] shadow-[0_0_60px_rgba(0,232,255,0.48)] border-[10px] sm:border-[13px] border-white hover:shadow-[0_0_80px_rgba(0,232,255,0.72)]'
+                ? (settings?.randomKidMode ? 'shadow-[0_0_120px_rgba(169,211,178,1.0)] bg-[#A9D3B2]' : 'shadow-[0_0_120px_rgba(0,232,255,1.0)] bg-[#00E8FF]')
+                : (settings?.randomKidMode ? 'bg-gradient-to-b from-[#BDF6D6] via-[#A9D3B2] to-[#6AA185] shadow-[0_0_60px_rgba(169,211,178,0.48)] border-[10px] sm:border-[13px] border-white hover:shadow-[0_0_80px_rgba(169,211,178,0.72)]' : 'bg-gradient-to-b from-[#33EFFF] via-[#00E8FF] to-[#0099FF] shadow-[0_0_60px_rgba(0,232,255,0.48)] border-[10px] sm:border-[13px] border-white hover:shadow-[0_0_80px_rgba(0,232,255,0.72)]')
             }`}
           >
             {/* Soft inner reflex gloss */}
@@ -501,7 +515,7 @@ export function IntroAndStartScreen({
 
             {/* Dash spinner outer outline border */}
             {isHovered && (
-              <div className="absolute -inset-5 sm:-inset-7 rounded-full border-2 border-dashed border-[#00E8FF] animate-[spin_12s_linear_infinite]" />
+              <div className={`absolute -inset-5 sm:-inset-7 rounded-full border-2 border-dashed ${settings?.randomKidMode ? 'border-[#A9D3B2]' : 'border-[#00E8FF]'} animate-[spin_12s_linear_infinite]`} />
             )}
 
             {/* Soft ambient wave loop */}

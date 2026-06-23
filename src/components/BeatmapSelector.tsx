@@ -39,6 +39,8 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
   const [showSettingsDrawer, setShowSettingsDrawer] = useState<boolean>(false);
+  const [easterEggUnlocked, setEasterEggUnlocked] = useState<boolean>(false);
+  const [isRebooting, setIsRebooting] = useState<boolean>(false);
   const [activeReplayModalGroup, setActiveReplayModalGroup] = useState<MapGroup | null>(null);
   const [highScores, setHighScores] = useState<Record<string, { score: number; maxCombo: number; accuracy: number }>>({});
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -356,7 +358,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
       
       {/* Header Bar */}
       <header className="h-16 border-b border-white/[0.06] px-6 flex items-center justify-between bg-[#14141A] sticky top-0 z-20 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-5">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#00CFFF] via-[#00E8FF] to-[#33EFFF] flex items-center justify-center shadow-[0_0_20px_rgba(0,232,255,0.4)] border border-white/20 hover:scale-105 active:scale-95 transition-all cursor-pointer animate-pulse duration-[3000ms]">
               <span className="text-white font-extrabold italic text-2xl -mt-0.5 select-none transition-transform hover:rotate-12 duration-200">Y!</span>
@@ -366,16 +368,16 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               <span className="text-[10px] font-bold tracking-widest text-[#00E8FF] uppercase leading-none opacity-90 mt-0.5">Web-Version</span>
             </div>
           </div>
-          <div className="hidden md:flex gap-1 h-8 items-center bg-black/30 border border-white/5 rounded-lg p-0.5 ml-4">
+          <div className="hidden md:flex gap-1 h-8 items-center bg-black/30 border border-white/5 rounded-sm p-0.5 ml-4">
             <button 
               onClick={() => onUpdateSettings({ ...settings, gameMode: 'standard' })}
-              className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${(!settings.gameMode || settings.gameMode === 'standard') ? 'bg-[#00E8FF]/10 text-[#00E8FF]' : 'text-gray-400 hover:text-white'}`}
+              className={`px-3 py-1 rounded-[2px] text-[11px] font-extrabold tracking-wider transition-colors ${(!settings.gameMode || settings.gameMode === 'standard') ? 'bg-[#00E8FF]/10 text-[#00E8FF]' : 'text-gray-400 hover:text-white'}`}
             >
               YADA!
             </button>
             <button 
               onClick={() => onUpdateSettings({ ...settings, gameMode: 'mania' })}
-              className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${settings.gameMode === 'mania' ? 'bg-[#00E8FF]/10 text-[#00E8FF]' : 'text-gray-400 hover:text-white'}`}
+              className={`px-3 py-1 rounded-[2px] text-[11px] font-extrabold tracking-wider transition-colors ${settings.gameMode === 'mania' ? 'bg-[#00E8FF]/10 text-[#00E8FF]' : 'text-gray-400 hover:text-white'}`}
             >
               YADA!MANIA
             </button>
@@ -399,7 +401,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
           <button
             id="btn-open-settings"
             onClick={() => setShowSettingsDrawer(!showSettingsDrawer)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-[#1C1C24] hover:bg-[#252530] active:scale-95 border border-white/10 rounded-xl text-xs font-semibold tracking-wide text-gray-200 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-2 bg-[#1C1C24] hover:bg-[#252530] active:scale-95 border border-white/10 rounded-sm text-xs font-semibold tracking-wide text-gray-200 transition-colors cursor-pointer"
           >
             <Settings className="w-4 h-4 text-[#00E8FF]" />
             <span className="hidden sm:inline">Einstellungen</span>
@@ -408,10 +410,10 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
       </header>
 
       {/* Main Grid Selector Section */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 bg-[radial-gradient(circle_at_bottom_right,_#1c1c28_0%,_#0E0E12_70%)]">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 bg-[radial-gradient(circle_at_bottom_right,_#1c1c28_0%,_#0E0E12_70%)]">
         
         {/* Left Side: Beatmap list & Upload */}
-        <div className="lg:col-span-7 flex flex-col gap-6">
+        <div className="lg:col-span-7 flex flex-col gap-5">
           
           {/* File Drag Zone */}
           <div
@@ -419,7 +421,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
             onDragOver={handleDragOver}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className="border border-dashed border-white/15 hover:border-[#00E8FF]/40 rounded-2xl flex flex-col items-center justify-center p-6 bg-[#16161F]/60 hover:bg-[#16161F]/90 transition-all cursor-pointer group shadow-[0_8px_30px_rgba(0,0,0,0.4)] gap-4"
+            className="border border-dashed border-white/15 hover:border-[#00E8FF]/40 rounded-sm flex flex-col items-center justify-center p-5 bg-[#16161F]/60 hover:bg-[#16161F]/90 transition-all cursor-pointer group shadow-[0_8px_30px_rgba(0,0,0,0.4)] gap-4"
           >
             <input
               type="file"
@@ -449,7 +451,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               )}
             </div>
                      {filteredGroups.length === 0 ? (
-              <div className="p-12 text-center text-gray-500 border border-white/5 bg-[#14141A]/70 rounded-2xl">
+              <div className="p-12 text-center text-gray-500 border border-white/5 bg-[#14141A]/70 rounded-sm">
                 {searchQuery ? 'Keine passenden Songs gefunden.' : 'Keine Beatmaps vorhanden.'}
               </div>
             ) : (
@@ -469,7 +471,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                           setSelectedVersionIdx(0);
                         }
                       }}
-                      className={`p-4 rounded-xl border flex flex-col justify-between text-left transition-all relative overflow-hidden group min-h-[92px] cursor-pointer ${
+                      className={`p-4 rounded-sm border flex flex-col justify-between text-left transition-all relative overflow-hidden group min-h-[92px] cursor-pointer ${
                         isSelected
                           ? 'border-[#00E8FF] bg-[#1E1E28] shadow-[0_0_25px_rgba(0,232,255,0.18)] border-l-4 border-l-[#00E8FF]'
                           : 'border-white/[0.04] bg-[#14141A]/85 hover:bg-[#1C1C24] hover:border-white/10'
@@ -489,7 +491,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                         )}
 
                         <div className="flex items-center gap-4 relative z-10">
-                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
+                          <div className={`w-12 h-12 rounded-sm flex items-center justify-center transition-all ${
                             isSelected
                               ? 'bg-[#00E8FF]/25 text-[#00E8FF] scale-105'
                               : 'bg-white/5 text-gray-400 group-hover:text-white'
@@ -535,7 +537,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                             <span
                               role="button"
                               onClick={(e) => handleDeleteClick(e, originalIdx, group)}
-                              className={`p-1.5 rounded-lg border transition-all flex items-center justify-center min-w-[28px] ${
+                              className={`p-1.5 rounded-sm border transition-all flex items-center justify-center min-w-[28px] ${
                                 deleteConfirmIdx === originalIdx
                                   ? 'bg-red-500/20 border-red-500 text-red-400 font-bold text-[10px] uppercase'
                                   : 'bg-white/5 hover:bg-red-500/20 hover:border-red-500/30 hover:text-red-400 border-white/10 text-gray-405'
@@ -561,7 +563,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                           {/* Highscore darüber in Gelb (ohne Pokalsymbol) */}
                           <div className="text-yellow-400 font-mono text-xs font-bold tracking-wide">
                             {currentHighScore ? (
-                              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-yellow-400/5 border border-yellow-500/20 rounded-xl px-3 py-2 gap-1.5">
+                              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-yellow-400/5 border border-yellow-500/20 rounded-sm px-3 py-2 gap-1.5">
                                 <div className="flex items-center gap-2">
                                   <span className="uppercase text-[10px] text-yellow-400/70 tracking-widest leading-none">DEIN HIGHSCORE:</span>
                                   <span className="font-extrabold text-sm ml-0.5 leading-none">{currentHighScore.score.toLocaleString()}</span>
@@ -586,7 +588,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                                 <button
                                   key={ver.id}
                                   onClick={() => handleDifficultySelect(originalIdx, subIdx)}
-                                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all border flex items-center gap-1.5 cursor-pointer ${
+                                  className={`px-2.5 py-1.5 rounded-sm text-xs font-bold tracking-wide transition-all border flex items-center gap-1.5 cursor-pointer ${
                                     isSubSelected
                                       ? 'bg-[#00E8FF] border-[#00E8FF] text-black font-extrabold uppercase shadow-[0_0_10px_rgba(0,232,255,0.3)]'
                                       : 'bg-[#14141A] border-white/5 text-gray-300 hover:border-white/15'
@@ -607,7 +609,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                           <div className="flex gap-2 mt-1">
                             <button
                               onClick={() => playBeatmap(originalIdx, selectedVersionIdx)}
-                              className="flex-1 py-2.5 bg-gradient-to-r from-[#00CFFF] to-[#00E8FF] hover:brightness-110 active:scale-[0.98] font-extrabold text-[11px] uppercase tracking-wide rounded-xl flex items-center justify-center gap-2 text-white shadow-md transition-all border-t border-white/10"
+                              className="flex-1 py-2.5 bg-gradient-to-r from-[#00CFFF] to-[#00E8FF] hover:brightness-110 active:scale-[0.98] font-extrabold text-[11px] uppercase tracking-wide rounded-sm flex items-center justify-center gap-2 text-white shadow-md transition-all border-t border-white/10"
                             >
                               <Play className="w-3.5 h-3.5 fill-white text-white" />
                               <span>Ausgewählte Diff Starten</span>
@@ -624,10 +626,10 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
         </div>
 
         {/* Right Side: Difficulty and settings dashboard details */}
-        <div className="hidden lg:flex lg:col-span-5 flex-col gap-6">
+        <div className="hidden lg:flex lg:col-span-5 flex-col gap-5">
           
           {activeGroup && activeVersion ? (
-            <div className="border border-white/[0.08] bg-[#14141C] rounded-2xl p-6 flex flex-col gap-6 relative overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)] max-h-[78vh] overflow-y-auto custom-scrollbar">
+            <div className="border border-white/[0.08] bg-[#14141C] rounded-sm p-5 flex flex-col gap-5 relative overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)] max-h-[78vh] overflow-y-auto custom-scrollbar">
               
               {/* Graphic Ambient backdrop with overlay cover blur */}
               {activeGroup.bgUrl && (
@@ -659,7 +661,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                         key={ver.id}
                         id={`btn-difficulty-${idx}`}
                         onClick={() => handleDifficultySelect(selectedGroupIdx, idx)}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold tracking-wide transition-all border flex items-center gap-1.5 cursor-pointer ${
+                        className={`px-3 py-2 rounded-sm text-xs font-bold tracking-wide transition-all border flex items-center gap-1.5 cursor-pointer ${
                           isSelected
                             ? 'bg-[#00E8FF] border-[#00E8FF] text-black font-black uppercase shadow-[0_0_15px_rgba(0,232,255,0.35)] scale-105'
                             : 'bg-[#1C1C24] border-white/5 hover:border-white/15 text-gray-300'
@@ -675,7 +677,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               </div>
 
               {/* Star Starry Difficulty Card Banner */}
-              <div className={`relative z-10 border rounded-xl p-4 flex items-center justify-between ${getStarBgClass(getStarRating(activeVersion))}`}>
+              <div className={`relative z-10 border rounded-sm p-4 flex items-center justify-between ${getStarBgClass(getStarRating(activeVersion))}`}>
                 <div className="flex flex-col">
                   <span className="text-[9px] font-bold font-mono tracking-widest uppercase">STAR RATING DIE DIFFICULTY</span>
                   <span className="text-3xl font-black tracking-tighter mt-1 italic font-mono flex items-baseline gap-1">
@@ -797,7 +799,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               </div>
 
               {/* High Score Panel resembling osu! ranking */}
-              <div className="bg-black/40 border border-white/5 rounded-xl p-4 flex items-center justify-between relative z-10">
+              <div className="bg-black/40 border border-white/5 rounded-sm p-4 flex items-center justify-between relative z-10">
                 <div className="flex items-center gap-3">
                   <Trophy className="w-5 h-5 text-yellow-400 fill-yellow-400/20" />
                   <div>
@@ -819,7 +821,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               <button
                 id="btn-start-playing"
                 onClick={handleStartPlay}
-                className="w-full py-4 bg-gradient-to-r from-[#00CFFF] via-[#00E8FF] to-[#FF88CC] hover:from-[#ff55a3] hover:to-[#ffa6db] active:scale-[0.98] font-black text-xl italic tracking-tight rounded-2xl flex items-center justify-center gap-3 text-white shadow-[0_0_35px_rgba(0,187,255,0.45)] hover:shadow-[0_0_45px_rgba(0,187,255,0.6)] transition-all relative z-10 cursor-pointer uppercase border-t border-white/20 duration-200"
+                className="w-full py-4 bg-gradient-to-r from-[#00CFFF] via-[#00E8FF] to-[#FF88CC] hover:from-[#ff55a3] hover:to-[#ffa6db] active:scale-[0.98] font-black text-xl italic tracking-tight rounded-sm flex items-center justify-center gap-3 text-white shadow-[0_0_35px_rgba(0,187,255,0.45)] hover:shadow-[0_0_45px_rgba(0,187,255,0.6)] transition-all relative z-10 cursor-pointer uppercase border-t border-white/20 duration-200"
               >
                 <Play className="w-6 h-6 fill-white text-white" />
                 <span className="font-extrabold tracking-wider drop-shadow-md">LET&apos;S GO (PLAY)</span>
@@ -827,48 +829,22 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
 
             </div>
           ) : (
-            <div className="border border-white/5 bg-[#14141A]/60 rounded-2xl p-12 text-center text-gray-500">
+            <div className="border border-white/5 bg-[#14141A]/60 rounded-sm p-12 text-center text-gray-500">
               Wähle eine Beatmap, um Details anzuzeigen und zu spielen.
             </div>
           )}
-
-          {/* Quick Info help box */}
-          <div className="border border-[#00E8FF]/10 bg-[#00E8FF]/5 rounded-2xl p-5 flex gap-4">
-            <HelpCircle className="w-5 h-5 text-[#00E8FF] shrink-0 mt-0.5" />
-            <div className="text-xs text-gray-400 flex flex-col gap-3 leading-relaxed">
-              <span className="font-bold text-gray-200 tracking-wide">Führungsgesten &amp; Tapping</span>
-              <p>
-                Du kannst die Hitcircles direkt auf deinem Touchscreen antippen! Verwende die visuelle Tippzonen (AT / K1) um für Dualtapping gerüstet zu sein.
-              </p>
-              <p>
-                PC-Keyboard-Spieler: Ziele mit deiner Maus auf die Kreise und tippe abwechselnd auf <kbd className="bg-white/10 px-1 rounded text-white font-mono border border-white/10 mx-0.5">Z</kbd> und <kbd className="bg-white/10 px-1 rounded text-white font-mono border border-white/10 mx-0.5">X</kbd> für Streams!
-              </p>
-
-              <div className="border-t border-white/10 my-1.5 pt-2">
-                <span className="font-bold text-gray-200 tracking-wide block mb-1">iPad &amp; iOS FAQ: Gelöschte Songs &amp; Lokaler Start</span>
-                <p className="mb-2">
-                  <strong className="text-[#00E8FF]">Warum verschwinden importierte Songs nach einer Weile?</strong><br />
-                  iOS und iPadOS löschen Browserdaten (IndexedDB) ungenutzter Webseiten nach 7 Tagen Inaktivität, um Speicher zu sparen. Um das zu verhindern, klicke im Safari auf den <strong>Teilen-Button &gt; &quot;Zum Home-Bildschirm hinzufügen&quot;</strong>. Als installierte PWA speichert iOS deine Daten dauerhaft. Alternativ kannst du deine <code className="bg-white/5 px-1 rounded">.osz</code>-Dateien jederzeit in Sekundenschnelle wieder hineinziehen (vollkommen offline!).
-                </p>
-                <p>
-                  <strong className="text-cyan-400">Wie startet man die App lokal auf dem iPad (z.B. in der Koder App)?</strong><br />
-                  Das bloße Öffnen der <code className="bg-white/5 px-1 rounded">index.html</code> aus dem Dateisystem scheitert meist an lokalen Sicherheits-Sperren (CORS) deines Browsers. Da wir das Projekt für relative Pfade (<code className="bg-white/5 px-1 rounded">base: &apos;./&apos;</code>) optimiert haben, ist der Start ganz einfach: Starte in der <strong>Koder App</strong> den eingebauten <strong>Webserver (Local Preview Web Server)</strong> für dieses Verzeichnis, anstatt die Datei direkt als Quellcode-Pfad zu laden. Dann funktioniert die App tadellos offline auf deinem iPad!
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
       </main>
 
       {/* Settings Panel Lateral Drawer */}
       {showSettingsDrawer && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-end">
-          <div className="bg-[#0A0A0C]/95 backdrop-blur-md w-full max-w-md border-l border-white/10 h-full flex flex-col shadow-2xl p-6 text-white text-sm relative overflow-y-auto">
+          <div className="bg-[#0A0A0C]/95 backdrop-blur-md w-full max-w-md border-l border-white/10 h-full flex flex-col shadow-2xl p-5 text-white text-sm relative overflow-y-auto">
             
             {/* Drawer Close */}
             <div className="flex items-center justify-between mb-8 pb-4 border-b border-white/15">
               <div className="flex items-center gap-2 text-[#00E8FF]">
-                <Sliders className="w-5 h-5" />
+                <Settings className="w-5 h-5 animate-[spin_0.8s_ease-out_1]" />
                 <h3 className="font-bold text-base text-white">Spieleinstellungen</h3>
               </div>
               <button 
@@ -880,23 +856,23 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               </button>
             </div>
 
-            <div className="flex flex-col gap-6 flex-1">
+            <div className="flex flex-col gap-5 flex-1">
               {/* Game Mode Option (visible especially on mobile where top bar misses it) */}
-              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-xl p-4">
+              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
                 <div>
                   <h4 className="font-semibold text-white">Spielmodus</h4>
                   <p className="text-xs text-gray-400 mt-0.5">Wechsle zwischen Yada! und Yada!mania</p>
                 </div>
-                <div className="flex gap-1 bg-black/30 border border-white/5 rounded-lg p-0.5">
+                <div className="flex gap-1 bg-black/30 border border-white/5 rounded-sm p-0.5">
                   <button 
                     onClick={() => onUpdateSettings({ ...settings, gameMode: 'standard' })}
-                    className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${(!settings.gameMode || settings.gameMode === 'standard') ? 'bg-[#00E8FF]/10 text-[#00E8FF]' : 'text-gray-400 hover:text-white'}`}
+                    className={`px-3 py-1 rounded-[2px] text-[11px] font-extrabold tracking-wider transition-colors ${(!settings.gameMode || settings.gameMode === 'standard') ? 'bg-[#00E8FF]/10 text-[#00E8FF]' : 'text-gray-400 hover:text-white'}`}
                   >
                     osu!
                   </button>
                   <button 
                     onClick={() => onUpdateSettings({ ...settings, gameMode: 'mania' })}
-                    className={`px-3 py-1 rounded-md text-[11px] font-extrabold tracking-wider transition-colors ${settings.gameMode === 'mania' ? 'bg-[#00E8FF]/10 text-[#00E8FF]' : 'text-gray-400 hover:text-white'}`}
+                    className={`px-3 py-1 rounded-[2px] text-[11px] font-extrabold tracking-wider transition-colors ${settings.gameMode === 'mania' ? 'bg-[#00E8FF]/10 text-[#00E8FF]' : 'text-gray-400 hover:text-white'}`}
                   >
                     mania
                   </button>
@@ -905,7 +881,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
 
               {/* Mania Mobile Mode Option */}
               {settings.gameMode === 'mania' && (
-                <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-xl p-4">
+                <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
                   <div>
                     <h4 className="font-semibold text-white">Mobiler Modus (Mobile Mode)</h4>
                     <p className="text-xs text-gray-400 mt-0.5">Optimierte Yada!mania UI mit Touch-Knöpfen für mobile Geräte</p>
@@ -924,9 +900,9 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               )}
 
               {/* Replay-System Option */}
-              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-xl p-4">
+              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
                 <div>
-                  <h4 className="font-semibold text-white">Replay-System</h4>
+                  <h4 className="font-semibold text-red-500">Replay-System 🔨</h4>
                   <p className="text-xs text-gray-400 mt-0.5">Erlaube das Aufzeichnen und Importieren von Replays</p>
                 </div>
                 <button
@@ -942,8 +918,54 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                 </button>
               </div>
 
+              
+              {/* Disable Rounded Corners Option */}
+              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
+                <div>
+                  <h4 className="font-semibold text-white">Runde Ecken Deaktivieren</h4>
+                  <p className="text-xs text-gray-400 mt-0.5">Macht die Ecken der UI wieder spitz (Neustart erforderlich)</p>
+                </div>
+                <button
+                  onClick={() => {
+                     toggleSettingBool('disableRoundedCorners');
+                     setIsRebooting(true);
+                     setTimeout(() => setIsRebooting(false), 2000);
+                  }}
+                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
+                    settings.disableRoundedCorners ? 'bg-[#00E8FF] shadow-[0_0_10px_rgba(0,232,255,0.4)]' : 'bg-white/10'
+                  }`}
+                >
+                  <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
+                    settings.disableRoundedCorners ? 'right-1' : 'left-1'
+                  }`} />
+                </button>
+              </div>
+
+              {(settings.randomKidMode || easterEggUnlocked) && (
+                <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
+                  <div>
+                    <h4 className="font-semibold text-white">Random Kid Mode</h4>
+                    <p className="text-xs text-gray-400 mt-0.5">Easter Egg! (Neustart erforderlich)</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                       toggleSettingBool('randomKidMode');
+                       setIsRebooting(true);
+                       setTimeout(() => setIsRebooting(false), 2000);
+                    }}
+                    className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
+                      settings.randomKidMode ? 'bg-[#A9D3B2] shadow-[0_0_10px_rgba(169,211,178,0.4)]' : 'bg-white/10'
+                    }`}
+                  >
+                    <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
+                      settings.randomKidMode ? 'right-1' : 'left-1'
+                    }`} />
+                  </button>
+                </div>
+              )}
+
               {/* Hitsounds feedback options */}
-              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-xl p-4">
+              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
                 <div>
                   <h4 className="font-semibold text-white">Hitsounds</h4>
                   <p className="text-xs text-gray-400 mt-0.5">Akustische Klicks bei erfolgreichen Treffern</p>
@@ -962,7 +984,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               </div>
 
               {/* Volume tracker */}
-              <div className="flex flex-col bg-white/[0.01] border border-white/5 rounded-xl p-4 gap-3">
+              <div className="flex flex-col bg-white/[0.01] border border-white/5 rounded-sm p-4 gap-3">
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-semibold">Spiel-Gesamtlautstärke</span>
                   <span className="font-mono text-[#00E8FF] font-bold">{Math.round(settings.volume * 100)}%</span>
@@ -977,13 +999,13 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     step="0.05"
                     value={settings.volume}
                     onChange={(e) => updateSettingNum('volume', parseFloat(e.target.value))}
-                    className="flex-1 accent-[#00E8FF] bg-white/10 h-1.5 rounded-lg cursor-pointer [outline:none]"
+                    className="flex-1 accent-[#00E8FF] bg-white/10 h-1.5 rounded-sm cursor-pointer [outline:none]"
                   />
                 </div>
               </div>
 
               {/* Dim layer background slider */}
-              <div className="flex flex-col bg-white/[0.01] border border-white/5 rounded-xl p-4 gap-3">
+              <div className="flex flex-col bg-white/[0.01] border border-white/5 rounded-sm p-4 gap-3">
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-semibold">Hintergrund-Abdunkelung</span>
                   <span className="font-mono text-[#00E8FF] font-bold">{settings.dimLevel}%</span>
@@ -998,13 +1020,13 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     step="5"
                     value={settings.dimLevel}
                     onChange={(e) => updateSettingNum('dimLevel', parseInt(e.target.value))}
-                    className="flex-1 accent-[#00E8FF] bg-white/10 h-1.5 rounded-lg cursor-pointer [outline:none]"
+                    className="flex-1 accent-[#00E8FF] bg-white/10 h-1.5 rounded-sm cursor-pointer [outline:none]"
                   />
                 </div>
               </div>
 
               {/* Auto scale playfield switch */}
-              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-xl p-4">
+              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
                 <div>
                   <h4 className="font-semibold text-white">Feldgröße automatisch anpassen</h4>
                   <p className="text-xs text-gray-400 mt-0.5">Passt das gesamte Spielfeld an den Bildschirm an</p>
@@ -1023,7 +1045,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               </div>
 
               {/* UI/Playfield Scale slider */}
-              <div className="flex flex-col bg-white/[0.01] border border-white/5 rounded-xl p-4 gap-3">
+              <div className="flex flex-col bg-white/[0.01] border border-white/5 rounded-sm p-4 gap-3">
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-semibold text-white">
                     {settings.autoScaleField ? 'Trigger-Objekte Skalierung' : 'Spielfeld & UI-Skalierung'}
@@ -1045,13 +1067,13 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     step="0.05"
                     value={settings.uiScale || 1.0}
                     onChange={(e) => updateSettingNum('uiScale', parseFloat(e.target.value))}
-                    className="flex-1 accent-[#00E8FF] bg-white/10 h-1.5 rounded-lg cursor-pointer [outline:none]"
+                    className="flex-1 accent-[#00E8FF] bg-white/10 h-1.5 rounded-sm cursor-pointer [outline:none]"
                   />
                 </div>
               </div>
 
               {/* Audio Offset Latenz slider */}
-              <div className="flex flex-col bg-white/[0.01] border border-white/5 rounded-xl p-4 gap-3">
+              <div className="flex flex-col bg-white/[0.01] border border-white/5 rounded-sm p-4 gap-3">
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-semibold text-white">Audio-Latenz-Ausgleich (Offset)</span>
                   <span className="font-mono text-[#00E8FF] font-bold">{settings.audioOffset > 0 ? '+' : ''}{settings.audioOffset} ms</span>
@@ -1069,13 +1091,13 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     step="5"
                     value={settings.audioOffset !== undefined ? settings.audioOffset : 0}
                     onChange={(e) => updateSettingNum('audioOffset', parseInt(e.target.value))}
-                    className="flex-1 accent-[#00E8FF] bg-white/10 h-1.5 rounded-lg cursor-pointer [outline:none]"
+                    className="flex-1 accent-[#00E8FF] bg-white/10 h-1.5 rounded-sm cursor-pointer [outline:none]"
                   />
                 </div>
               </div>
 
                {/* Keyboard option Z / X */}
-              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-xl p-4">
+              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
                 <div>
                   <h4 className="font-semibold text-white">Tastatursteuerung</h4>
                   <p className="text-xs text-gray-400 mt-0.5">Erlaube X/Y/Z-Tastendrücke für Klicks (unterstützt QWERTZ & QWERTY)</p>
@@ -1096,7 +1118,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               </div>
 
               {/* Disable Clicks during Gameplay option */}
-              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-xl p-4">
+              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
                 <div>
                   <h4 className="font-semibold text-white">Tippen / Klicks im Spiel deaktivieren</h4>
                   <p className="text-xs text-gray-400 mt-0.5">Deaktiviert Mausklicks/Taps für Hits auf Kreise. Aim per Pointer weiterhin aktiv. Erfordert Tastatursteuerung.</p>
@@ -1115,7 +1137,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               </div>
 
               {/* Touch zones layout visualization */}
-              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-xl p-4">
+              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
                 <div>
                   <h4 className="font-semibold text-white">Visuelle Touch-Zonen</h4>
                   <p className="text-xs text-gray-400 mt-0.5">Zeigt optische Tipp-Indikatoren unten links/rechts</p>
@@ -1134,7 +1156,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               </div>
 
               {/* Skin Selection & Import */}
-              <div className="flex flex-col bg-[#111118] border border-white/5 rounded-xl p-4 gap-3">
+              <div className="flex flex-col bg-[#111118] border border-white/5 rounded-sm p-4 gap-3">
                 <div className="flex justify-between items-center pb-2 border-b border-white/5">
                   <h4 className="font-semibold text-white text-xs tracking-wider uppercase">Skin / Design-Auswahl</h4>
                   <span className="text-[9px] text-[#00E8FF] font-bold uppercase tracking-wider bg-[#00E8FF]/10 px-1.5 py-0.5 rounded border border-[#00E8FF]/10 font-mono">NEU</span>
@@ -1145,7 +1167,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     onClick={() => {
                       onUpdateSettings({ ...settings, skinPreset: 'argon' });
                     }}
-                    className={`py-2 px-0.5 rounded-xl text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                    className={`py-2 px-0.5 rounded-sm text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
                       settings.skinPreset === 'argon' 
                         ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
                         : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
@@ -1158,7 +1180,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     onClick={() => {
                       onUpdateSettings({ ...settings, skinPreset: 'lazer' });
                     }}
-                    className={`py-2 px-0.5 rounded-xl text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                    className={`py-2 px-0.5 rounded-sm text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
                       settings.skinPreset === 'lazer' 
                         ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
                         : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
@@ -1171,7 +1193,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     onClick={() => {
                       onUpdateSettings({ ...settings, skinPreset: 'whitecat' });
                     }}
-                    className={`py-2 px-0.5 rounded-xl text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                    className={`py-2 px-0.5 rounded-sm text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
                       settings.skinPreset === 'whitecat' 
                         ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
                         : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
@@ -1184,7 +1206,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     onClick={() => {
                       onUpdateSettings({ ...settings, skinPreset: 'classic' });
                     }}
-                    className={`py-2 px-0.5 rounded-xl text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                    className={`py-2 px-0.5 rounded-sm text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
                       settings.skinPreset === 'classic' 
                         ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
                         : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
@@ -1207,7 +1229,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                         } 
                       });
                     }}
-                    className={`py-2 px-0.5 rounded-xl text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                    className={`py-2 px-0.5 rounded-sm text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
                       settings.skinPreset === 'custom' 
                         ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
                         : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
@@ -1219,7 +1241,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                 </div>
 
                 {settings.skinPreset === 'custom' && (
-                  <div className="flex flex-col gap-3 mt-1 bg-black/40 border border-white/5 p-3 rounded-lg text-xs">
+                  <div className="flex flex-col gap-3 mt-1 bg-black/40 border border-white/5 p-3 rounded-sm text-xs">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-[#FF65A9] text-[10px] tracking-wide uppercase font-mono">Custom Skin Editor</span>
                       <button 
@@ -1264,7 +1286,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     <div className="grid grid-cols-2 gap-2 mt-1">
                       <div>
                         <label className="text-gray-400 block text-[9px] uppercase tracking-wider mb-1">Circle Füllung</label>
-                        <div className="flex gap-1.5 items-center bg-[#15151F] border border-white/5 rounded-md p-1">
+                        <div className="flex gap-1.5 items-center bg-[#15151F] border border-white/5 rounded-[2px] p-1">
                           <input 
                             type="color" 
                             value={settings.customSkinColors?.hitcircleFill || '#3b82f6'} 
@@ -1282,7 +1304,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                       </div>
                       <div>
                         <label className="text-gray-400 block text-[9px] uppercase tracking-wider mb-1">Circle Rand</label>
-                        <div className="flex gap-1.5 items-center bg-[#15151F] border border-white/5 rounded-md p-1">
+                        <div className="flex gap-1.5 items-center bg-[#15151F] border border-white/5 rounded-[2px] p-1">
                           <input 
                             type="color" 
                             value={settings.customSkinColors?.hitcircleBorder || '#ffffff'} 
@@ -1300,7 +1322,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                       </div>
                       <div>
                         <label className="text-gray-400 block text-[9px] uppercase tracking-wider mb-1">Approach-Kreis</label>
-                        <div className="flex gap-1.5 items-center bg-[#15151F] border border-white/5 rounded-md p-1">
+                        <div className="flex gap-1.5 items-center bg-[#15151F] border border-white/5 rounded-[2px] p-1">
                           <input 
                             type="color" 
                             value={settings.customSkinColors?.approachCircleColor || '#60a5fa'} 
@@ -1318,7 +1340,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                       </div>
                       <div>
                         <label className="text-gray-400 block text-[9px] uppercase tracking-wider mb-1">Slider Spur</label>
-                        <div className="flex gap-1.5 items-center bg-[#15151F] border border-white/5 rounded-md p-1">
+                        <div className="flex gap-1.5 items-center bg-[#15151F] border border-white/5 rounded-[2px] p-1">
                           <input 
                             type="color" 
                             value={settings.customSkinColors?.sliderTrackColor || '#2563eb'} 
@@ -1344,7 +1366,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
             {/* Footer drawer copyright */}
             <div className="border-t border-white/10 pt-4 text-center text-xs text-gray-500 font-mono mt-8 leading-relaxed">
               This Project is heavily based on and inspired by <a href="https://osu.ppy.sh/" target="_blank" rel="noopener noreferrer" className="text-[#00E8FF] hover:underline">Dean Herberts Osu! Game.</a><br/>
-              Plz go ahead and <a href="https://osu.ppy.sh/home/support" target="_blank" rel="noopener noreferrer" className="text-[#00E8FF] hover:underline">support ihm by buying his supporter Tag or something</a> (now seriously, do it!).
+              Plz go ahead and <a href="https://osu.ppy.sh/home/support" target="_blank" rel="noopener noreferrer" className="text-[#00E8FF] hover:underline" onClick={() => setEasterEggUnlocked(true)}>support ihm by buying his supporter Tag or something</a> (now seriously, do it!).
             </div>
           </div>
         </div>
@@ -1363,7 +1385,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
 
       {/* General Error Notification Popups */}
       {errorMsg && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-red-600/15 border border-red-500/35 px-5 py-3 rounded-xl flex items-center gap-3 text-red-400 text-sm shadow-xl z-[200] animate-fade-in max-w-md w-full">
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 bg-red-600/15 border border-red-500/35 px-5 py-3 rounded-sm flex items-center gap-3 text-red-400 text-sm shadow-xl z-[200] animate-fade-in max-w-md w-full">
           <div className="w-2 h-2 rounded-full bg-red-400 shrink-0"></div>
           <div className="flex-1 font-medium">{errorMsg}</div>
           <button 
