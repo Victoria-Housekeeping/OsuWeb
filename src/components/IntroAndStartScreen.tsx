@@ -61,6 +61,27 @@ export function IntroAndStartScreen({
     vy?: number;
   }>>([]);
 
+  // Step 1: Handle Document title and 11.5s timeout for black screen
+  useEffect(() => {
+    if (phase === 'check' || phase === 'black_waiting_for_click') {
+      document.title = ' ';
+    } else if (phase === 'synth_intro') {
+      document.title = 'welcome to yada!';
+    } else if (phase === 'menu_start') {
+      document.title = 'yada!';
+    }
+  }, [phase]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      // If we are still in this component after 11.5s and haven't triggered transition...
+      if (!isTransitioningRef.current && (phase === 'black_waiting_for_click' || phase === 'menu_start')) {
+        document.title = 'Starting when you Tap! …';
+      }
+    }, 11500);
+    return () => clearTimeout(timer);
+  }, [phase]);
+
   // Sequence Step 1: Detect autoplay permissions on load
   useEffect(() => {
     const handleInitialVerification = async () => {

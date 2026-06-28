@@ -1,6 +1,8 @@
 {
-  "name": "Yada!",
+  "name": "Remix: Osu! Web Player",
   "description": "Importiere und spiele Osu! Beatmaps (.osz) direkt im Browser, optimiert für Touchscreens.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

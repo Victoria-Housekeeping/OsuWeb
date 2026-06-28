@@ -54,6 +54,10 @@ export const ScoreScreen: React.FC<ScoreScreenProps> = ({
   const rank = getRank();
 
   useEffect(() => {
+    document.title = rank.grade;
+  }, [rank.grade]);
+
+  useEffect(() => {
     // Check and save personal best locally
     const storageKey = `osutouch_score_${beatmap.id}`;
     const raw = localStorage.getItem(storageKey);

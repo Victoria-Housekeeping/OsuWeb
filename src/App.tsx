@@ -4,6 +4,7 @@ import { BeatmapSelector } from './components/BeatmapSelector';
 import { GameCanvas } from './components/GameCanvas';
 import { ScoreScreen } from './components/ScoreScreen';
 import { IntroAndStartScreen } from './components/IntroAndStartScreen';
+import { getCustomAsset } from './utils/db';
 
 export default function App() {
   const [view, setView] = useState<'intro_and_start' | 'selector' | 'playing' | 'score'>('intro_and_start');
@@ -208,15 +209,26 @@ export default function App() {
 
       let decoded: AudioBuffer | null = null;
       try {
-        const response = await fetch('./cYsmix - Triangles_320k.mp3');
-        if (response.ok) {
-          const arrBuffer = await response.arrayBuffer();
-          if (arrBuffer.byteLength > 100) {
-            decoded = await actx.decodeAudioData(arrBuffer);
+        let arrBuffer: ArrayBuffer | null = null;
+        if (settings.useCustomIntro) {
+          const customAsset = await getCustomAsset('__custom_intro__.mp3');
+          if (customAsset) {
+            arrBuffer = await customAsset.arrayBuffer();
           }
         }
+        
+        if (!arrBuffer) {
+           const response = await fetch('./cYsmix - Triangles_320k.mp3');
+           if (response.ok) {
+             arrBuffer = await response.arrayBuffer();
+           }
+        }
+
+        if (arrBuffer && arrBuffer.byteLength > 100) {
+          decoded = await actx.decodeAudioData(arrBuffer);
+        }
       } catch (err) {
-        console.warn('Local Triangles MP3 not loaded/found, using synthesized fallback...', err);
+        console.warn('Triangles MP3 not loaded/found, using synthesized fallback...', err);
       }
 
       if (!decoded) {

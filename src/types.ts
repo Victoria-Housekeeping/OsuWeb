@@ -87,6 +87,7 @@ export interface GameSettings {
   disableRoundedCorners?: boolean;
   randomKidMode?: boolean;
   enableReplays?: boolean;
+  useCustomIntro?: boolean;
 }
 
 export interface Replay {

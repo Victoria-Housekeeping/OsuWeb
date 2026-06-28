@@ -90,6 +90,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const burstsRef = useRef<HitBurst[]>([]);
   const lastFrameTimeRef = useRef<number>(0);
   const activeManiaKeysRef = useRef<boolean[]>([false, false, false, false]);
+  const activeDesktopKeysRef = useRef({
+    k1: false,
+    k2: false,
+    m1: false,
+    m2: false,
+  });
 
   // Spinner states
   const spinnerSpinsRef = useRef<number>(0);
@@ -199,7 +205,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       if (settings.useKeyboard || settings.disableClicking) {
-        if (keyLower === 'z' || keyLower === 'y' || keyLower === 'x') {
+        if (keyLower === 'z' || keyLower === 'y') {
+          activeDesktopKeysRef.current.k1 = true;
+          if (isPlayingRef.current && mousePosRef.current) {
+            triggerClick(mousePosRef.current.x, mousePosRef.current.y);
+          }
+        } else if (keyLower === 'x' || keyLower === 'c') {
+          activeDesktopKeysRef.current.k2 = true;
           if (isPlayingRef.current && mousePosRef.current) {
             triggerClick(mousePosRef.current.x, mousePosRef.current.y);
           }
@@ -214,6 +226,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (keyLower === 'f') activeManiaKeysRef.current[1] = false;
         if (keyLower === 'j') activeManiaKeysRef.current[2] = false;
         if (keyLower === 'k') activeManiaKeysRef.current[3] = false;
+        return;
+      }
+      if (keyLower === 'z' || keyLower === 'y') {
+        activeDesktopKeysRef.current.k1 = false;
+      } else if (keyLower === 'x' || keyLower === 'c') {
+        activeDesktopKeysRef.current.k2 = false;
       }
     };
 
@@ -244,6 +262,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   }, [beatmap, audioBuffer]);
 
   const mousePosRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Handle aborting/quitting
+  const handleClose = () => {
+    const wasPlaying = isPlayingState;
+    document.title = wasPlaying ? '⏹️yada!' : '⏏️yada!';
+    setTimeout(() => {
+      // Reset title to plain standard
+      document.title = 'yada!';
+    }, 350);
+    onClose();
+  };
 
   const initAudio = async () => {
     try {
@@ -294,6 +323,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       startTimeRef.current = audioCtxRef.current.currentTime - offsetSec;
       isPlayingRef.current = true;
       setIsPlayingState(true);
+      document.title = '▶️yada!';
 
       if (videoRef.current) {
         videoRef.current.currentTime = offsetSec;
@@ -335,13 +365,24 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       // Pause
       pausedTimeMsRef.current = playheadMsRef.current;
       stopAudioTrack();
+      document.title = '⏸️yada!';
     } else {
       // Resume
       playAudioTrack();
+      document.title = '▶️yada!';
     }
   };
 
   const handleRestart = () => {
+    const wasPlaying = isPlayingState;
+    document.title = wasPlaying ? '🔁yada!' : '🔂yada!';
+    setTimeout(() => {
+      // Restore standard playing title after 6 sec, if we are still playing
+      if (document.title.includes('yada!')) {
+         document.title = '▶️yada!';
+      }
+    }, 6000);
+
     // Reset state
     setIsFailed(false);
     setIsFinished(false);
@@ -629,7 +670,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     // Determine the distance between clicked coords and hit circle center
     const objectScale = settings.autoScaleField !== false ? (settings.uiScale || 1.0) : 1.0;
-    const hitRadius = (baseCSSize / 2 * 1.5) * objectScale; // generous hit box multiplier for flawless touchscreen play!
+    const hitRadius = (baseCSSize / 2 * (settings.touchControls ? 1.5 : 1.05)) * objectScale; // precise desktop or generous mobile hitbox
     const dx = clickedOsuX - oldest.x;
     const dy = clickedOsuY - oldest.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
@@ -683,8 +724,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       timestamp: Date.now(),
     });
 
+    if (e.button === 0) {
+      activeDesktopKeysRef.current.m1 = true;
+    } else {
+      activeDesktopKeysRef.current.m2 = true;
+    }
+
     if (!settings.disableClicking) {
       triggerClick(clickX, clickY);
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.button === 0) {
+      activeDesktopKeysRef.current.m1 = false;
+    } else {
+      activeDesktopKeysRef.current.m2 = false;
     }
   };
 
@@ -728,7 +783,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           const dist = Math.sqrt(dx * dx + dy * dy);
           
           const objectScale = settings.autoScaleField !== false ? (settings.uiScale || 1.0) : 1.0;
-          if (dist < baseCSSize * 1.5 * objectScale) {
+          const trackingRadius = baseCSSize * (settings.touchControls ? 1.5 : 1.1) * objectScale;
+          if (dist < trackingRadius) {
             // Player is tracking the slider correctly!
             // Grant mini score boost or play tick acoustic feedback
             if (Math.random() < 0.08) {
@@ -1510,6 +1566,92 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       ctx.restore();
     });
+
+    // Draw Desktop Keyboard / Mouse Key Press Indicators
+    if (!settings.touchControls && settings.gameMode !== 'mania') {
+      const startX = w - 60;
+      const startY = h / 2 - 80;
+      const boxW = 40;
+      const boxH = 34;
+      const spacing = 8;
+      
+      const keys = [
+        { label: 'K1', active: activeDesktopKeysRef.current.k1, desc: 'Z / Y', color: 'rgba(0, 232, 255, ' },
+        { label: 'K2', active: activeDesktopKeysRef.current.k2, desc: 'X / C', color: 'rgba(255, 101, 169, ' },
+        { label: 'M1', active: activeDesktopKeysRef.current.m1, desc: 'M-L', color: 'rgba(234, 179, 8, ' },
+        { label: 'M2', active: activeDesktopKeysRef.current.m2, desc: 'M-R', color: 'rgba(168, 85, 247, ' },
+      ];
+      
+      keys.forEach((k, idx) => {
+        const y = startY + idx * (boxH + spacing);
+        
+        if (k.active) {
+          ctx.save();
+          ctx.shadowColor = k.color.replace(', ', ', 0.8)');
+          ctx.shadowBlur = 15;
+          ctx.fillStyle = k.color.replace(', ', ', 0.45)');
+          ctx.fillRect(startX, y, boxW, boxH);
+          ctx.strokeStyle = k.color.replace(', ', ', 1)');
+          ctx.lineWidth = 2;
+          ctx.strokeRect(startX, y, boxW, boxH);
+          ctx.restore();
+        } else {
+          ctx.fillStyle = 'rgba(20, 20, 28, 0.45)';
+          ctx.fillRect(startX, y, boxW, boxH);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(startX, y, boxW, boxH);
+        }
+        
+        ctx.fillStyle = k.active ? '#ffffff' : 'rgba(255, 255, 255, 0.6)';
+        ctx.font = 'bold 11px var(--font-mono)';
+        ctx.textAlign = 'center';
+        ctx.fillText(k.label, startX + boxW / 2, y + 16);
+        
+        ctx.fillStyle = k.active ? 'rgba(255, 255, 255, 0.8)' : 'rgba(255, 255, 255, 0.3)';
+        ctx.font = '8px var(--font-mono)';
+        ctx.fillText(k.desc, startX + boxW / 2, y + 28);
+      });
+    }
+
+    // Draw Custom Desktop Cursor
+    if (!settings.touchControls && mousePosRef.current && settings.gameMode !== 'mania') {
+      const mx = mousePosRef.current.x;
+      const my = mousePosRef.current.y;
+      
+      ctx.save();
+      
+      const isPressing = activeDesktopKeysRef.current.k1 || activeDesktopKeysRef.current.k2 || activeDesktopKeysRef.current.m1 || activeDesktopKeysRef.current.m2;
+      
+      ctx.beginPath();
+      const outerRadius = isPressing ? 18 : 14;
+      ctx.arc(mx, my, outerRadius, 0, Math.PI * 2);
+      ctx.fillStyle = isPressing ? 'rgba(0, 232, 255, 0.2)' : 'rgba(255, 101, 169, 0.15)';
+      ctx.fill();
+      ctx.strokeStyle = isPressing ? 'rgba(0, 232, 255, 0.8)' : 'rgba(255, 101, 169, 0.7)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      const tickLen = 5;
+      const tickGap = 5;
+      ctx.strokeStyle = isPressing ? 'rgba(0, 232, 255, 0.5)' : 'rgba(255, 101, 169, 0.4)';
+      ctx.lineWidth = 1.5;
+      
+      ctx.beginPath(); ctx.moveTo(mx, my - outerRadius - tickGap); ctx.lineTo(mx, my - outerRadius - tickGap - tickLen); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx, my + outerRadius + tickGap); ctx.lineTo(mx, my + outerRadius + tickGap + tickLen); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx - outerRadius - tickGap, my); ctx.lineTo(mx - outerRadius - tickGap - tickLen, my); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx + outerRadius + tickGap, my); ctx.lineTo(mx + outerRadius + tickGap + tickLen, my); ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(mx, my, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.strokeStyle = isPressing ? '#00E8FF' : '#FF65A9';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      
+      ctx.restore();
+    }
   };
 
   // Compute live play accuracy percentage
@@ -1589,7 +1731,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             id="btn-quit-game"
             onClick={() => {
               cleanupAudio();
-              onClose();
+              handleClose();
             }}
             className="flex items-center gap-2 px-3.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-sm text-xs text-gray-200 font-extrabold uppercase tracking-wider transition-all cursor-pointer hover:border-[#00E8FF]/30"
           >
@@ -1624,7 +1766,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       {/* Gameplay Canvas Container */}
       <div 
         ref={containerRef}
-        className="flex-1 relative bg-radial from-[#12121b] to-[#08080c] overflow-hidden cursor-crosshair"
+        className={`flex-1 relative bg-radial from-[#12121b] to-[#08080c] overflow-hidden ${settings.touchControls ? 'cursor-crosshair' : 'cursor-none'}`}
       >
         
         {/* Giant bottom-left combo counter overlay matching osu!lazer */}
@@ -1673,6 +1815,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           id="osu-gameplay-canvas"
           ref={canvasRef} 
           onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={() => {
+            activeDesktopKeysRef.current.m1 = false;
+            activeDesktopKeysRef.current.m2 = false;
+          }}
           onPointerMove={handlePointerMove}
           className="absolute inset-0 block w-full h-full"
         />
@@ -1740,7 +1887,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             </button>
             <button
               id="btn-quit-failed"
-              onClick={onClose}
+              onClick={handleClose}
               className="flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 active:scale-95 text-gray-300 border border-white/10 font-semibold rounded-sm text-sm transition-all cursor-pointer"
             >
               <X className="w-4 h-4" />

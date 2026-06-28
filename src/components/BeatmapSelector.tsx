@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Beatmap, GameSettings, PlayStats, MapGroup } from '../types';
 import { parseOszFile } from '../utils/osuParser';
 import { generateAudioBufferForBeatmap } from '../utils/audioSynth';
-import { saveOszFile, getAllOszFiles, deleteOszFile } from '../utils/db';
+import { saveOszFile, getAllOszFiles, deleteOszFile, saveCustomAsset } from '../utils/db';
 import { Upload, Music, Settings, Play, Info, Check, EyeOff, Sliders, Volume2, VolumeX, Trophy, HelpCircle, X, Trash2, Search, Tv } from 'lucide-react';
 import { getReplaysForBeatmap, deleteReplay, saveReplay } from '../utils/replays';
 
@@ -44,11 +44,23 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
   const [activeReplayModalGroup, setActiveReplayModalGroup] = useState<MapGroup | null>(null);
   const [highScores, setHighScores] = useState<Record<string, { score: number; maxCombo: number; accuracy: number }>>({});
   const [searchQuery, setSearchQuery] = useState<string>('');
+  
+  useEffect(() => {
+    document.title = 'yada - Songauswahl-Bildschirm!';
+    const t = setTimeout(() => {
+      document.title = 'yada!';
+    }, 10000);
+    return () => {
+      clearTimeout(t);
+      document.title = 'yada!';
+    };
+  }, []);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const playReplay = async (ver: Beatmap, playerName: string) => {
     setActiveReplayModalGroup(null);
+    document.title = `${ver.title} - loading`;
     setIsLoading(true);
     setLoadingStep('Lese Replay-Audiospur...');
 
@@ -158,6 +170,10 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
     setErrorMsg(null);
 
     const fileName = file.name.toLowerCase();
+    
+    // Attempt to extract title for import if it's mostly typical "Artist - Title.osz"
+    const displayName = file.name.replace(/\.osz|\.zip/i, '');
+    document.title = `${displayName} - Import`;
 
     setLoadingStep('Lese Beatmap Archiv (.osz)...');
     if (!fileName.endsWith('.osz') && !fileName.endsWith('.zip')) {
@@ -187,6 +203,9 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
       // Save to IndexedDB so it survives page reload!
       await saveOszFile(file.name, file);
 
+      document.title = 'yada! ⬇️';
+      setTimeout(() => { document.title = 'yada!'; }, 2000);
+
       setMapGroups(prev => {
         // Prevent duplicate loads of same fileName
         const filtered = prev.filter(g => g.fileName !== file.name);
@@ -211,6 +230,8 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
     if (!group) return;
     const ver = group.versions[vIdx];
     if (!ver) return;
+
+    document.title = `${ver.title} - loading`;
 
     setIsLoading(true);
     setLoadingStep('Bereite Audio-Daten vor...');
@@ -786,14 +807,14 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                   </button>
                   <button 
                     onClick={() => onUpdateSettings({ ...settings, touchControls: !settings.touchControls })}
-                    className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold font-mono text-xs cursor-pointer shadow-md transition-all ${
+                    className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold font-mono text-[10px] cursor-pointer shadow-md transition-all ${
                       settings.touchControls 
                         ? 'bg-pink-500 border-pink-600 text-black font-extrabold shadow-pink-500/20 scale-105' 
-                        : 'bg-[#181820] border-white/5 text-gray-400 font-medium hover:border-white/10'
+                        : 'bg-cyan-500 border-cyan-600 text-black font-extrabold shadow-cyan-500/20 scale-105'
                     }`}
-                    title="Touch Zones: Visuelle Tippindikatoren im Spiel anzeigen"
+                    title={settings.touchControls ? "Mobil-Modus (Touchscreen) ist AKTIV" : "Desktop-Modus (Maus & Tastatur) ist AKTIV"}
                   >
-                    VZ
+                    {settings.touchControls ? 'MOB' : 'DESK'}
                   </button>
                 </div>
               </div>
@@ -919,6 +940,43 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               </div>
 
               
+              {/* Custom Intro Option */}
+              <div className="flex flex-col gap-3 bg-white/[0.01] border border-white/5 rounded-sm p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-white">Eigenes Intro verwenden</h4>
+                    <p className="text-xs text-gray-400 mt-0.5">Ersetzt das Standard-Intro mit einer eigenen MP3-Datei</p>
+                  </div>
+                  <button
+                    onClick={() => toggleSettingBool('useCustomIntro')}
+                    className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
+                      settings.useCustomIntro ? 'bg-[#00E8FF] shadow-[0_0_10px_rgba(0,232,255,0.4)]' : 'bg-white/10'
+                    }`}
+                  >
+                    <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
+                      settings.useCustomIntro ? 'right-1' : 'left-1'
+                    }`} />
+                  </button>
+                </div>
+                {settings.useCustomIntro && (
+                  <div className="flex items-center justify-between bg-black/20 rounded p-2 border border-white/5">
+                    <span className="text-xs text-gray-400">Wähle eine MP3-Datei:</span>
+                    <input 
+                      type="file" 
+                      accept=".mp3,audio/mpeg" 
+                      className="text-xs text-white max-w-[160px]" 
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          await saveCustomAsset('__custom_intro__.mp3', file);
+                          alert('Neues Intro gespeichert!');
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
               {/* Disable Rounded Corners Option */}
               <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
                 <div>
@@ -1136,11 +1194,11 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                 </button>
               </div>
 
-              {/* Touch zones layout visualization */}
+              {/* Mobil-Modus option */}
               <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
                 <div>
-                  <h4 className="font-semibold text-white">Visuelle Touch-Zonen</h4>
-                  <p className="text-xs text-gray-400 mt-0.5">Zeigt optische Tipp-Indikatoren unten links/rechts</p>
+                  <h4 className="font-semibold text-white">Mobil-Modus / Touch-Zonen</h4>
+                  <p className="text-xs text-gray-400 mt-0.5">Aktiviert großzügige Touch-Hitboxen und zeigt visuelle Tipp-Zonen an. Wenn aus, ist das Spiel für Desktop (Maus & Tastatur) mit hochpräzisen Hitboxen, Tasten-Overlays und einem interaktiven Custom-Cursor optimiert.</p>
                 </div>
                 <button
                   id="btn-toggle-touch-controls"
