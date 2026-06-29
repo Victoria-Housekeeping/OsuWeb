@@ -1,6 +1,51 @@
 import JSZip from 'jszip';
 import { Beatmap, HitObject } from '../types';
 
+export async function checkAndParseSkin(file: File): Promise<{ isSkin: boolean; skinName?: string; customSkinColors?: any } | null> {
+  try {
+    const zip = new JSZip();
+    const contents = await zip.loadAsync(file);
+    const skinIniName = Object.keys(contents.files).find(path => path.toLowerCase().endsWith('skin.ini'));
+    
+    if (!skinIniName) return { isSkin: false };
+
+    const skinIniText = await contents.files[skinIniName].async('string');
+    
+    // Parse basic colors from skin.ini
+    const customSkinColors: any = {};
+    const lines = skinIniText.split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('//')) continue;
+      
+      const [key, ...vals] = trimmed.split(':');
+      if (key && vals.length > 0) {
+        const val = vals.join(':').trim();
+        const rgbMatch = val.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+        if (rgbMatch) {
+          const r = parseInt(rgbMatch[1]);
+          const g = parseInt(rgbMatch[2]);
+          const b = parseInt(rgbMatch[3]);
+          const hex = '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).padStart(6, '0').toUpperCase();
+          
+          const kLower = key.toLowerCase();
+          if (kLower === 'combo1') customSkinColors.hitcircleFill = hex;
+          if (kLower === 'combo2') customSkinColors.approachCircleColor = hex;
+          if (kLower === 'slidertrackoverride') customSkinColors.sliderTrackColor = hex;
+          if (kLower === 'spinnerapproachcircle') customSkinColors.spinnerColor = hex;
+        }
+      }
+    }
+
+    // Attempt to extract name from filename
+    let skinName = file.name.replace(/\.zip|\.osk/i, '');
+
+    return { isSkin: true, skinName, customSkinColors };
+  } catch (err) {
+    return null;
+  }
+}
+
 interface TimingPoint {
   time: number;
   beatLength: number; // positive = ms per beat, negative = velocity multiplier

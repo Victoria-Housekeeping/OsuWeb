@@ -79,6 +79,7 @@ export interface GameSettings {
     approachCircleColor: string;
     textColor: string;
     sliderTrackColor: string;
+    spinnerColor?: string;
   };
   customSkinImages?: {
     cursorUrl?: string;

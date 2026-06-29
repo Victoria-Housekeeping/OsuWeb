@@ -1,8 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Beatmap, GameSettings, PlayStats, MapGroup } from '../types';
-import { parseOszFile } from '../utils/osuParser';
+import { parseOszFile, checkAndParseSkin } from '../utils/osuParser';
 import { generateAudioBufferForBeatmap } from '../utils/audioSynth';
-import { saveOszFile, getAllOszFiles, deleteOszFile, saveCustomAsset } from '../utils/db';
+import { saveOszFile, getAllOszFiles, deleteOszFile, saveCustomAsset, saveKompliSkin, getAllKompliSkins, deleteKompliSkin } from '../utils/db';
 import { Upload, Music, Settings, Play, Info, Check, EyeOff, Sliders, Volume2, VolumeX, Trophy, HelpCircle, X, Trash2, Search, Tv } from 'lucide-react';
 import { getReplaysForBeatmap, deleteReplay, saveReplay } from '../utils/replays';
 
@@ -44,6 +44,11 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
   const [activeReplayModalGroup, setActiveReplayModalGroup] = useState<MapGroup | null>(null);
   const [highScores, setHighScores] = useState<Record<string, { score: number; maxCombo: number; accuracy: number }>>({});
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [kompliSkins, setKompliSkins] = useState<any[]>([]);
+  
+  useEffect(() => {
+    getAllKompliSkins().then(skins => setKompliSkins(skins.map(s => s.data)));
+  }, []);
   
   useEffect(() => {
     document.title = 'yada - Songauswahl-Bildschirm!';
@@ -172,17 +177,38 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
     const fileName = file.name.toLowerCase();
     
     // Attempt to extract title for import if it's mostly typical "Artist - Title.osz"
-    const displayName = file.name.replace(/\.osz|\.zip/i, '');
+    const displayName = file.name.replace(/\.osz|\.zip|\.osk/i, '');
     document.title = `${displayName} - Import`;
 
-    setLoadingStep('Lese Beatmap Archiv (.osz)...');
-    if (!fileName.endsWith('.osz') && !fileName.endsWith('.zip')) {
-      setErrorMsg(`Ungültige Datei: "${file.name}" ist keine gültige Yada! Beatmap-Datei. Bitte wähle eine .osz oder .zip Datei.`);
+    setLoadingStep('Lese Datei Archiv...');
+    if (!fileName.endsWith('.osz') && !fileName.endsWith('.zip') && !fileName.endsWith('.osk')) {
+      setErrorMsg(`Ungültige Datei: "${file.name}". Bitte wähle eine .osz, .osk oder .zip Datei.`);
       setIsLoading(false);
       return;
     }
 
     try {
+      // Check if it's a skin first
+      const skinCheck = await checkAndParseSkin(file);
+      if (skinCheck && skinCheck.isSkin) {
+        setLoadingStep('Speichere Kompli-Skin...');
+        const newSkin = {
+          name: skinCheck.skinName || displayName,
+          customSkinColors: skinCheck.customSkinColors
+        };
+        await saveKompliSkin(newSkin.name, newSkin);
+        
+        // Refresh kompli skins list
+        const skinsList = await getAllKompliSkins();
+        setKompliSkins(skinsList.map(s => s.data));
+        
+        document.title = 'Skin importiert! ✨';
+        setTimeout(() => { document.title = 'yada!'; }, 2000);
+        setIsLoading(false);
+        return;
+      }
+
+      setLoadingStep('Lese Beatmap Archiv (.osz)...');
       const parsedMaps = await parseOszFile(file);
       
       // Group them by song title
@@ -1216,7 +1242,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               {/* Skin Selection & Import */}
               <div className="flex flex-col bg-[#111118] border border-white/5 rounded-sm p-4 gap-3">
                 <div className="flex justify-between items-center pb-2 border-b border-white/5">
-                  <h4 className="font-semibold text-white text-xs tracking-wider uppercase">Skin / Design-Auswahl</h4>
+                  <h4 className="font-semibold text-white text-xs tracking-wider uppercase">Klassische Skins</h4>
                   <span className="text-[9px] text-[#00E8FF] font-bold uppercase tracking-wider bg-[#00E8FF]/10 px-1.5 py-0.5 rounded border border-[#00E8FF]/10 font-mono">NEU</span>
                 </div>
                 
@@ -1323,6 +1349,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                                       approachCircleColor: parsed.customSkinColors?.approachCircleColor || '#60a5fa',
                                       textColor: parsed.customSkinColors?.textColor || '#ffffff',
                                       sliderTrackColor: parsed.customSkinColors?.sliderTrackColor || '#2563eb',
+                                      spinnerColor: parsed.customSkinColors?.spinnerColor || '#ec4899',
                                     }
                                   });
                                 } else {
@@ -1414,7 +1441,60 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                           <span className="text-[9px] font-mono text-gray-400 uppercase">{settings.customSkinColors?.sliderTrackColor || '#2563EB'}</span>
                         </div>
                       </div>
+                      <div>
+                        <label className="text-gray-400 block text-[9px] uppercase tracking-wider mb-1">Spinner</label>
+                        <div className="flex gap-1.5 items-center bg-[#15151F] border border-white/5 rounded-[2px] p-1">
+                          <input 
+                            type="color" 
+                            value={settings.customSkinColors?.spinnerColor || '#ec4899'} 
+                            onChange={(e) => onUpdateSettings({
+                              ...settings,
+                              customSkinColors: {
+                                ...(settings.customSkinColors || { hitcircleFill: '#3b82f6', hitcircleBorder: '#ffffff', approachCircleColor: '#60a5fa', textColor: '#ffffff', sliderTrackColor: '#2563eb' }),
+                                spinnerColor: e.target.value
+                              }
+                            })}
+                            className="w-5 h-5 bg-transparent border-0 rounded cursor-pointer [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-0"
+                          />
+                          <span className="text-[9px] font-mono text-gray-400 uppercase">{settings.customSkinColors?.spinnerColor || '#EC4899'}</span>
+                        </div>
+                      </div>
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Kompli-Skins */}
+              <div className="flex flex-col bg-[#111118] border border-white/5 rounded-sm p-4 gap-3">
+                <div className="flex justify-between items-center pb-2 border-b border-white/5">
+                  <h4 className="font-semibold text-white text-xs tracking-wider uppercase">Kompli-Skins</h4>
+                </div>
+                
+                {kompliSkins.length === 0 ? (
+                  <p className="text-xs text-gray-500">Keine Kompli-Skins importiert. Ziehe eine Skin-Zip (.osk) in den Importer.</p>
+                ) : (
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {kompliSkins.map((skin, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          onUpdateSettings({ 
+                            ...settings, 
+                            skinPreset: 'custom', 
+                            customSkinColors: skin.customSkinColors
+                          });
+                        }}
+                        className={`py-2 px-0.5 rounded-sm text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer truncate ${
+                          settings.skinPreset === 'custom' && settings.customSkinColors === skin.customSkinColors
+                            ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
+                            : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                        }`}
+                        title={skin.name}
+                      >
+                        <span className="text-[7.5px] text-gray-500 font-bold -mb-1 truncate max-w-[50px]">KOMPLI</span>
+                        <span className="truncate max-w-[50px]">{skin.name}</span>
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>

@@ -497,9 +497,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     hitObjectsStateRef.current.forEach(obj => {
       if (!obj.isHit && obj.hitResult === null) {
         const isSliderHolding = obj.type === 'slider' && playhead >= obj.time && playhead <= (obj.endTime || obj.time);
+        const isSpinnerActive = obj.type === 'spinner' && playhead <= (obj.endTime || obj.time);
         
         // If playhead surpasses the hit envelope frame
-        if (playhead > obj.time + hit50Window && !isSliderHolding) {
+        const endTime = obj.endTime || obj.time;
+        if (playhead > endTime + hit50Window && !isSliderHolding && !isSpinnerActive) {
           triggerHit(obj, 0); // Miss!
         }
       }
@@ -675,19 +677,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const dy = clickedOsuY - oldest.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
 
-    if (oldest.type === 'spinner') {
-      // In touch, spin is done by rotating, but we can also permit rapid alternative taps!
-      // This increases spin index
-      spinnerSpinsRef.current += 1;
-      const progress = Math.min(1, spinnerSpinsRef.current / 15); // tap 15 times to clear!
-      setSpinnerProgress(progress);
-      
-      if (progress >= 1) {
-        triggerHit(oldest, 300);
-        setSpinnerProgress(null);
-      }
-      return;
-    }
+    if (oldest.type === 'spinner') return;
 
     if (distance <= hitRadius) {
       // It's a Hit! Let's check accuracy timing
@@ -771,6 +761,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
 
     // Check sliders currently being held down
+    const isPressing = settings.touchControls || activeDesktopKeysRef.current.k1 || activeDesktopKeysRef.current.k2 || activeDesktopKeysRef.current.m1 || activeDesktopKeysRef.current.m2 || e.buttons > 0;
+    
     hitObjectsStateRef.current.forEach(obj => {
       if (obj.type === 'slider' && playhead >= obj.time && playhead <= (obj.endTime || obj.time)) {
         // Calculate where the slider ball is at current playhead
@@ -797,6 +789,33 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               }
             }
           }
+        }
+      } else if (obj.type === 'spinner' && playhead >= obj.time && playhead <= (obj.endTime || obj.time) && !obj.isHit) {
+        if (isPressing) {
+          const dx = clickX - rect.width / 2;
+          const dy = clickY - rect.height / 2;
+          const angle = Math.atan2(dy, dx);
+          
+          if (lastSpinnerAngleRef.current !== null) {
+            let diff = angle - lastSpinnerAngleRef.current;
+            if (diff > Math.PI) diff -= Math.PI * 2;
+            if (diff < -Math.PI) diff += Math.PI * 2;
+            
+            spinnerSpinsRef.current += Math.abs(diff) / (Math.PI * 2);
+            // typical required spins is roughly 3 spins per second.
+            const reqSpins = Math.max(1, ((obj.endTime || obj.time) - obj.time) / 1000 * 3);
+            
+            const progress = Math.min(1, spinnerSpinsRef.current / reqSpins);
+            setSpinnerProgress(progress);
+            
+            if (progress >= 1) {
+              triggerHit(obj, 300);
+              setSpinnerProgress(null);
+            }
+          }
+          lastSpinnerAngleRef.current = angle;
+        } else {
+          lastSpinnerAngleRef.current = null;
         }
       }
     });
@@ -1190,6 +1209,50 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           }
         }
 
+        // Draw Reverse Arrows
+        if ((obj.slides || 1) > 1 && obj.sliderPoints && obj.sliderPoints.length >= 2) {
+          const singleDuration = (obj.duration || 1) / (obj.slides || 1);
+          for (let i = 1; i < (obj.slides || 1); i++) {
+            // Only draw if playhead hasn't passed this reverse point
+            if (playhead < obj.time + singleDuration * i) {
+              const isAtEnd = i % 2 !== 0;
+              const rp = isAtEnd ? obj.sliderPoints[obj.sliderPoints.length - 1] : obj.sliderPoints[0];
+              const prev = isAtEnd ? obj.sliderPoints[obj.sliderPoints.length - 2] : obj.sliderPoints[1];
+              
+              if (rp && prev) {
+                const angle = Math.atan2(prev.y - rp.y, prev.x - rp.x);
+                
+                ctx.save();
+                ctx.translate(offsetX + rp.x * scale, offsetY + rp.y * scale);
+                ctx.rotate(angle);
+                
+                // Draw a nice arrow! Pulse the arrow slightly
+                const pulse = 1 + 0.1 * Math.sin(Date.now() / 150);
+                ctx.scale(pulse, pulse);
+                
+                ctx.beginPath();
+                ctx.moveTo(10 * scale * renderScale, 0);
+                ctx.lineTo(25 * scale * renderScale, 15 * scale * renderScale);
+                ctx.moveTo(10 * scale * renderScale, 0);
+                ctx.lineTo(25 * scale * renderScale, -15 * scale * renderScale);
+                
+                ctx.moveTo(-10 * scale * renderScale, 0);
+                ctx.lineTo(5 * scale * renderScale, 15 * scale * renderScale);
+                ctx.moveTo(-10 * scale * renderScale, 0);
+                ctx.lineTo(5 * scale * renderScale, -15 * scale * renderScale);
+                
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.lineWidth = 6 * scale * renderScale;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.stroke();
+                
+                ctx.restore();
+              }
+            }
+          }
+        }
+
         // Draw moving slider ball tracking indicator if sliding is currently active
         if (playhead >= obj.time && playhead <= (obj.endTime || obj.time)) {
           const ratio = (playhead - obj.time) / (obj.duration || 1);
@@ -1261,6 +1324,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     const objectsToDraw = [...hitObjectsStateRef.current]
       .filter((obj) => {
+        if (obj.type === 'spinner') {
+          return playhead >= obj.time && playhead <= (obj.endTime || obj.time);
+        }
         const isVisible = playhead >= obj.time - approachDuration && playhead <= obj.time + hit50Window;
         return isVisible && !obj.isHit && obj.hitResult === null;
       })
@@ -1284,23 +1350,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.stroke();
 
         // Draw spinner active progress
-        if (spinnerProgress !== null) {
+        const isCleared = obj.isHit && obj.hitResult !== 0;
+        const displayProgress = isCleared ? 1 : (spinnerProgress || 0);
+        if (displayProgress > 0) {
           ctx.beginPath();
-          ctx.arc(w / 2, h / 2, spinRadius, -Math.PI / 2, -Math.PI / 2 + spinnerProgress * Math.PI * 2);
-          ctx.strokeStyle = 'rgb(236, 72, 153)';
+          ctx.arc(w / 2, h / 2, spinRadius, -Math.PI / 2, -Math.PI / 2 + displayProgress * Math.PI * 2);
+          
+          let spinnerColor = 'rgb(236, 72, 153)';
+          if (skin === 'custom' && settings.customSkinColors?.spinnerColor) {
+            spinnerColor = settings.customSkinColors.spinnerColor;
+          }
+          
+          ctx.strokeStyle = spinnerColor;
           ctx.lineWidth = 16 * drawScale;
           ctx.stroke();
         }
 
         // Draw prompt text
         ctx.font = `bold ${Math.floor(20 * drawScale)}px var(--font-sans)`;
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = isCleared ? '#A9D3B2' : (obj.hitResult === 0 ? '#ff4444' : '#fff');
         ctx.textAlign = 'center';
-        ctx.fillText('SPIN! (Schnelles Tippen)', w / 2, h / 2 - 20 * drawScale);
+        ctx.fillText(isCleared ? 'CLEAR!' : (obj.hitResult === 0 ? 'FAILED' : 'SPIN!'), w / 2, h / 2 - 20 * drawScale);
 
         ctx.font = `${Math.floor(14 * drawScale)}px var(--font-mono)`;
         ctx.fillStyle = 'rgba(255,255,255,0.6)';
-        ctx.fillText(`${spinnerSpinsRef.current} / 15`, w / 2, h / 2 + 20 * drawScale);
+        const reqSpins = Math.max(1, ((obj.endTime || obj.time) - obj.time) / 1000 * 3);
+        ctx.fillText(`${Math.floor(spinnerSpinsRef.current)} / ${Math.ceil(reqSpins)}`, w / 2, h / 2 + 20 * drawScale);
         return;
       }
 
