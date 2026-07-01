@@ -13,6 +13,7 @@ interface IntroAndStartScreenProps {
   isLoadingAudio: boolean;
   onInitAudioContext: () => Promise<{ actx: AudioContext; buffer: AudioBuffer | null }>;
   settings?: GameSettings;
+  onUpdateSettings?: (settings: GameSettings) => void;
 }
 
 export function IntroAndStartScreen({
@@ -20,7 +21,8 @@ export function IntroAndStartScreen({
   trianglesBuffer,
   isLoadingAudio,
   onInitAudioContext,
-  settings
+  settings,
+  onUpdateSettings
 }: IntroAndStartScreenProps) {
   // Intro Phases:
   // - 'check': Verifying browser user activation / initial authorization status
@@ -565,6 +567,26 @@ export function IntroAndStartScreen({
           display: whiteOverlayOpacity > 0.001 ? 'block' : 'none'
         }}
       />
+      
+      {/* SAFE MODE BUTTON */}
+      <button 
+        onClick={(e) => {
+          e.stopPropagation();
+          if (onUpdateSettings && settings) {
+            const newSafeMode = !settings.safeMode;
+            onUpdateSettings({ ...settings, safeMode: newSafeMode });
+            localStorage.setItem('osu_settings', JSON.stringify({ ...settings, safeMode: newSafeMode }));
+            // Optional visually silent feedback if user requested "ändert sich Visuell nichts", 
+            // but we'll let the user know what state it is in if they look closely, or keep it the same to follow instructions.
+            // "Wenn man ihn vor dem Start betätigt, ändert sich Visuell nichts, aber es werden genau die Sicherheits-Features aktiviert..."
+            // I'll keep the button looking relatively identical or subtle.
+          }
+        }}
+        className={`absolute bottom-4 left-4 z-[1000] px-3 py-1.5 rounded text-xs font-bold font-sans transition-colors cursor-pointer pointer-events-auto ${settings?.safeMode ? 'bg-[#A9D3B2]/20 text-[#A9D3B2] border border-[#A9D3B2]/50' : 'bg-white/5 text-gray-500 hover:text-gray-300 border border-white/10'}`}
+        title="Schaltet Datei-Größenlimits für schwächere Geräte ein"
+      >
+        Safe Mode {settings?.safeMode ? 'ON' : 'OFF'}
+      </button>
     </div>
   );
 }

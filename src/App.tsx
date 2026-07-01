@@ -6,6 +6,9 @@ import { ScoreScreen } from './components/ScoreScreen';
 import { IntroAndStartScreen } from './components/IntroAndStartScreen';
 import { getCustomAsset } from './utils/db';
 
+import { extractFileFromOsz } from './utils/osuParser';
+import { getOszFile } from './utils/db';
+
 export default function App() {
   const [view, setView] = useState<'intro_and_start' | 'selector' | 'playing' | 'score'>('intro_and_start');
   const [activeBeatmap, setActiveBeatmap] = useState<Beatmap | null>(null);
@@ -28,7 +31,7 @@ export default function App() {
     uiScale: 1.0,
     autoScaleField: true,
     audioOffset: 0,
-    skinPreset: 'lazer',
+    skinPreset: 'yada!',
     disableRoundedCorners: true,
     randomKidMode: false,
     enableReplays: true,
@@ -38,7 +41,12 @@ export default function App() {
     try {
       const saved = localStorage.getItem('osu_settings');
       if (saved) {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+        const parsed = JSON.parse(saved);
+        // Automatically default users to yada!
+        if (parsed.skinPreset === 'lazer' || parsed.skinPreset === 'lazer2018' || !parsed.skinPreset) {
+          parsed.skinPreset = 'yada!';
+        }
+        return { ...DEFAULT_SETTINGS, ...parsed };
       }
     } catch (e) {
       console.warn('Failed to load settings', e);
@@ -152,11 +160,26 @@ export default function App() {
 
           let audioBufferToPlay: AudioBuffer;
 
+          let usedAudioBlob: Blob | null = activeVersion.audioBlob || null;
+          if (!usedAudioBlob && activeVersion.audioFilename && activeGroup.fileName) {
+            const oszBlob = await getOszFile(activeGroup.fileName);
+            if (oszBlob) {
+              usedAudioBlob = await extractFileFromOsz(oszBlob, activeVersion.audioFilename);
+            }
+          }
+
           if (activeVersion.id === 'built-in-synthwave-tutorial') {
             const { generateAudioBufferForBeatmap } = await import('./utils/audioSynth');
             audioBufferToPlay = await generateAudioBufferForBeatmap();
-          } else if (activeVersion.audioBlob) {
-            const arrayBuffer = await activeVersion.audioBlob.arrayBuffer();
+          } else if (usedAudioBlob) {
+            if (settings.safeMode && usedAudioBlob.size > 15 * 1024 * 1024) {
+              console.warn('Safe Mode: Audio file is too large for automatic background preview. Skipping BGM to prevent memory crash.');
+              if (trianglesBuffer && !isCancelled) {
+                playBgm('triangles', trianglesBuffer, settings.volume * 0.45);
+              }
+              return;
+            }
+            const arrayBuffer = await usedAudioBlob.arrayBuffer();
             audioBufferToPlay = await actx.decodeAudioData(arrayBuffer);
           } else {
             // fallback
@@ -374,6 +397,7 @@ export default function App() {
           isLoadingAudio={isLoadingTriangles}
           onInitAudioContext={handleInitAudioContext}
           settings={settings}
+          onUpdateSettings={setSettings}
         />
       )}
 

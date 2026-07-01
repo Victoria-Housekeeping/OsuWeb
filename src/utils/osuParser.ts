@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import { Beatmap, HitObject } from '../types';
 
-export async function checkAndParseSkin(file: File): Promise<{ isSkin: boolean; skinName?: string; customSkinColors?: any } | null> {
+export async function checkAndParseSkin(file: File): Promise<{ isSkin: boolean; skinName?: string; customSkinColors?: any; customSkinImages?: any } | null> {
   try {
     const zip = new JSZip();
     const contents = await zip.loadAsync(file);
@@ -14,33 +14,185 @@ export async function checkAndParseSkin(file: File): Promise<{ isSkin: boolean; 
     // Parse basic colors from skin.ini
     const customSkinColors: any = {};
     const lines = skinIniText.split(/\r?\n/);
+    let currentSection = '';
+    let currentManiaKeys = 0;
+    
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('//')) continue;
+      
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        currentSection = trimmed;
+        if (currentSection === '[Mania]') {
+           currentManiaKeys = 0; // reset until we see Keys:
+        }
+        continue;
+      }
       
       const [key, ...vals] = trimmed.split(':');
       if (key && vals.length > 0) {
         const val = vals.join(':').trim();
         const rgbMatch = val.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+        let hex = '';
         if (rgbMatch) {
           const r = parseInt(rgbMatch[1]);
           const g = parseInt(rgbMatch[2]);
           const b = parseInt(rgbMatch[3]);
-          const hex = '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).padStart(6, '0').toUpperCase();
+          hex = '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+        }
+        
+        const kLower = key.trim().toLowerCase();
+        
+        if (currentSection === '[Colours]') {
+          if (hex) {
+            if (kLower.startsWith('combo')) {
+              const numMatch = kLower.match(/combo(\d+)/);
+              if (numMatch) {
+                if (!customSkinColors.comboColors) customSkinColors.comboColors = [];
+                const idx = parseInt(numMatch[1], 10) - 1;
+                customSkinColors.comboColors[idx] = hex;
+              }
+            }
+            if (kLower === 'slidertrackoverride') customSkinColors.sliderTrackColor = hex;
+            if (kLower === 'sliderborder') customSkinColors.sliderBorderColor = hex;
+            if (kLower === 'spinnerapproachcircle') customSkinColors.spinnerColor = hex;
+          }
+        } else if (currentSection === '[Fonts]') {
+          if (!customSkinColors.fonts) customSkinColors.fonts = {};
+          if (kLower === 'hitcircleprefix') customSkinColors.fonts.hitCirclePrefix = val.trim();
+          if (kLower === 'scoreprefix') customSkinColors.fonts.scorePrefix = val.trim();
+          if (kLower === 'comboprefix') customSkinColors.fonts.comboPrefix = val.trim();
+        } else if (currentSection === '[Mania]') {
+          if (!customSkinColors.mania) customSkinColors.mania = {};
           
-          const kLower = key.toLowerCase();
-          if (kLower === 'combo1') customSkinColors.hitcircleFill = hex;
-          if (kLower === 'combo2') customSkinColors.approachCircleColor = hex;
-          if (kLower === 'slidertrackoverride') customSkinColors.sliderTrackColor = hex;
-          if (kLower === 'spinnerapproachcircle') customSkinColors.spinnerColor = hex;
+          if (kLower === 'keys') {
+            currentManiaKeys = parseInt(val, 10);
+            if (!customSkinColors.mania[currentManiaKeys]) {
+              customSkinColors.mania[currentManiaKeys] = { colors: {}, images: {} };
+            }
+          } else if (currentManiaKeys > 0) {
+            if (hex && kLower.startsWith('colour')) {
+              customSkinColors.mania[currentManiaKeys].colors[kLower] = hex;
+            } else if (kLower.startsWith('keyimage') || kLower.startsWith('noteimage')) {
+              customSkinColors.mania[currentManiaKeys].images[kLower] = val.trim();
+            }
+          }
         }
       }
+    }
+    
+    if (customSkinColors.comboColors) {
+      customSkinColors.comboColors = customSkinColors.comboColors.filter((c: string | undefined) => c !== undefined);
     }
 
     // Attempt to extract name from filename
     let skinName = file.name.replace(/\.zip|\.osk/i, '');
 
-    return { isSkin: true, skinName, customSkinColors };
+    // Extract skin images
+    const customSkinImages: any = {};
+    const imageNamesToFind = [
+      'cursor', 'hitcircle', 'hitcircleoverlay', 'approachcircle', 'sliderb', 'sliderfollowcircle',
+      'sliderendcircle', 'sliderendcircleoverlay',
+      'reversearrow', 'hit0', 'hit50', 'hit100', 'hit300', 'hit100k', 'hit300k', 'hit300g',
+      'spinner-approachcircle', 'spinner-background', 'spinner-circle', 'spinner-metre', 'spinner-osu', 'spinner-clear', 'spinner-spin',
+      'scorebar-bg', 'scorebar-colour', 'scorebar-marker',
+      'pause-overlay', 'pause-continue', 'pause-retry', 'pause-back',
+      'selection-mode', 'selection-mode-over', 'menu-button-background'
+    ];
+
+    // Determine the prefixes, default to 'default', 'score', 'combo'
+    const hitCirclePrefix = customSkinColors.fonts?.hitCirclePrefix || 'default';
+    const scorePrefix = customSkinColors.fonts?.scorePrefix || 'score';
+    const comboPrefix = customSkinColors.fonts?.comboPrefix || 'combo';
+
+    // We still want to map them to 'default-0', 'score-0' etc in the customSkinImages object
+    // so the rest of the game can find them using a predictable key.
+    const prefixMappings = [
+      { prefix: hitCirclePrefix, internalName: 'default' },
+      { prefix: scorePrefix, internalName: 'score' },
+      { prefix: comboPrefix, internalName: 'combo' }
+    ];
+
+    for (const mapping of prefixMappings) {
+      // Map 0-9
+      for (let i = 0; i <= 9; i++) {
+        // the actual file name without extension
+        const targetName = `${mapping.prefix}-${i}`;
+        // we'll store it as 'default-0Url', 'score-0Url'
+        const internalKey = `${mapping.internalName}-${i}Url`;
+        
+        let imgPath = Object.keys(contents.files).find(path => path.toLowerCase().endsWith(`${targetName.toLowerCase()}@2x.png`));
+        if (!imgPath) {
+          imgPath = Object.keys(contents.files).find(path => path.toLowerCase().endsWith(`${targetName.toLowerCase()}.png`));
+        }
+        if (imgPath) {
+          const imgData = await contents.files[imgPath].async('base64');
+          customSkinImages[internalKey] = `data:image/png;base64,${imgData}`;
+        }
+      }
+      
+      // Map symbols (comma, dot, percent, x)
+      const symbols = ['comma', 'dot', 'percent', 'x'];
+      for (const sym of symbols) {
+        const targetName = `${mapping.prefix}-${sym}`;
+        const internalKey = `${mapping.internalName}-${sym}Url`;
+        
+        let imgPath = Object.keys(contents.files).find(path => path.toLowerCase().endsWith(`${targetName.toLowerCase()}@2x.png`));
+        if (!imgPath) {
+          imgPath = Object.keys(contents.files).find(path => path.toLowerCase().endsWith(`${targetName.toLowerCase()}.png`));
+        }
+        if (imgPath) {
+          const imgData = await contents.files[imgPath].async('base64');
+          customSkinImages[internalKey] = `data:image/png;base64,${imgData}`;
+        }
+      }
+    }
+    
+    // Add referenced mania images to the list to find
+    if (customSkinColors.mania) {
+      for (const keys of Object.keys(customSkinColors.mania)) {
+        const images = customSkinColors.mania[parseInt(keys)].images;
+        for (const val of Object.values(images)) {
+           const cleaned = val.replace('.png', '').toLowerCase();
+           if (!imageNamesToFind.includes(cleaned)) {
+               imageNamesToFind.push(cleaned);
+           }
+        }
+      }
+    }
+
+    for (const imgName of imageNamesToFind) {
+      // Try to find animated frame 0 first (@2x then normal), then fallback to base image
+      let imgPath = Object.keys(contents.files).find(path => path.toLowerCase().endsWith(`${imgName}-0@2x.png`));
+      if (!imgPath) {
+        imgPath = Object.keys(contents.files).find(path => path.toLowerCase().endsWith(`${imgName}-0.png`));
+      }
+      if (!imgPath) {
+        imgPath = Object.keys(contents.files).find(path => path.toLowerCase().endsWith(`${imgName}@2x.png`));
+      }
+      if (!imgPath) {
+        imgPath = Object.keys(contents.files).find(path => path.toLowerCase().endsWith(`${imgName}.png`));
+      }
+      
+      if (imgPath) {
+        const imgData = await contents.files[imgPath].async('base64');
+        customSkinImages[`${imgName}Url`] = `data:image/png;base64,${imgData}`;
+      }
+    }
+    
+    // Also load all mania-related images dynamically by scanning the zip for any .png
+    // so we don't miss user's custom mania keys and notes
+    for (const path of Object.keys(contents.files)) {
+       if (path.toLowerCase().endsWith('.png') && path.toLowerCase().includes('mania')) {
+           const imgName = path.split('/').pop()?.replace('@2x.png', '').replace('.png', '').toLowerCase();
+           if (imgName && !customSkinImages[`${imgName}Url`]) {
+               const imgData = await contents.files[path].async('base64');
+               customSkinImages[`${imgName}Url`] = `data:image/png;base64,${imgData}`;
+           }
+       }
+    }
+
+    return { isSkin: true, skinName, customSkinColors, customSkinImages };
   } catch (err) {
     return null;
   }
@@ -50,6 +202,14 @@ interface TimingPoint {
   time: number;
   beatLength: number; // positive = ms per beat, negative = velocity multiplier
   uninherited: boolean;
+}
+
+export async function extractFileFromOsz(oszBlob: Blob, filename: string): Promise<Blob | null> {
+  const zip = new JSZip();
+  const contents = await zip.loadAsync(oszBlob);
+  const key = findFileInZip(contents, filename);
+  if (!key) return null;
+  return await contents.files[key].async('blob');
 }
 
 export async function parseOszFile(file: File): Promise<Beatmap[]> {
@@ -76,9 +236,7 @@ export async function parseOszFile(file: File): Promise<Beatmap[]> {
         // Look for audio file in zip, case-insensitive
         const audioKey = findFileInZip(contents, beatmap.audioFilename);
         if (audioKey) {
-          const audioBlob = await contents.files[audioKey].async('blob');
-          beatmap.audioBlob = audioBlob;
-          beatmap.audioUrl = URL.createObjectURL(audioBlob);
+          beatmap.audioFilename = audioKey; // Just save the exact key, don't extract the blob yet
         }
       }
 
@@ -92,13 +250,11 @@ export async function parseOszFile(file: File): Promise<Beatmap[]> {
         }
       }
 
-      // Hook up video file
+      // Hook up video file (Only store filename, don't extract blob yet to save memory)
       if (beatmap.videoFilename) {
         const videoKey = findFileInZip(contents, beatmap.videoFilename);
         if (videoKey) {
-          const videoBlob = await contents.files[videoKey].async('blob');
-          beatmap.videoBlob = videoBlob;
-          beatmap.videoUrl = URL.createObjectURL(videoBlob);
+          beatmap.videoFilename = videoKey;
         }
       } else {
         // Fallback: search for any .mp4 or .webm or similar video file in the zip if we didn't resolve one
@@ -107,9 +263,6 @@ export async function parseOszFile(file: File): Promise<Beatmap[]> {
           return lower.endsWith('.mp4') || lower.endsWith('.webm') || lower.endsWith('.mov') || lower.endsWith('.avi');
         });
         if (videoKeys.length > 0) {
-          const videoBlob = await contents.files[videoKeys[0]].async('blob');
-          beatmap.videoBlob = videoBlob;
-          beatmap.videoUrl = URL.createObjectURL(videoBlob);
           beatmap.videoFilename = videoKeys[0];
         }
       }
@@ -220,6 +373,18 @@ export async function parseOsuText(text: string): Promise<Beatmap> {
           }
         }
       }
+    } else if (currentSection === '[Colours]') {
+      if (key.trim().toLowerCase().startsWith('combo')) {
+        const rgbMatch = value.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+        if (rgbMatch) {
+          const r = parseInt(rgbMatch[1]);
+          const g = parseInt(rgbMatch[2]);
+          const b = parseInt(rgbMatch[3]);
+          const hex = '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).padStart(6, '0').toUpperCase();
+          if (!beatmap.colors) beatmap.colors = [];
+          beatmap.colors.push(hex);
+        }
+      }
     } else if (currentSection === '[TimingPoints]') {
       const parts = line.split(',');
       if (parts.length >= 2) {
@@ -281,6 +446,7 @@ export async function parseOsuText(text: string): Promise<Beatmap> {
       const isCircle = (typeByte & 1) !== 0;
       const isSlider = (typeByte & 2) !== 0;
       const isSpinner = (typeByte & 8) !== 0;
+      const isHold = (typeByte & 128) !== 0;
       const isNewCombo = (typeByte & 4) !== 0;
 
       if (isNewCombo) {
@@ -297,6 +463,21 @@ export async function parseOsuText(text: string): Promise<Beatmap> {
           y,
           time,
           type: 'circle',
+          comboIndex: comboIndex++,
+          comboSet
+        });
+      } else if (isHold && parts.length >= 6) {
+        // Mania Hold Note: x,y,time,type,hitSound,endTime:hitSample
+        const endTimeStr = parts[5].split(':')[0];
+        const endTime = parseFloat(endTimeStr);
+        hitObjects.push({
+          id,
+          x,
+          y,
+          time,
+          endTime,
+          type: 'slider', // Treat hold note as a slider for internal typing simplicity
+          duration: endTime - time,
           comboIndex: comboIndex++,
           comboSet
         });

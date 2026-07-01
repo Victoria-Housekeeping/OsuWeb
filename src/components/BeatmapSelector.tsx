@@ -1,10 +1,12 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Beatmap, GameSettings, PlayStats, MapGroup } from '../types';
+import JSZip from 'jszip';
 import { parseOszFile, checkAndParseSkin } from '../utils/osuParser';
 import { generateAudioBufferForBeatmap } from '../utils/audioSynth';
-import { saveOszFile, getAllOszFiles, deleteOszFile, saveCustomAsset, saveKompliSkin, getAllKompliSkins, deleteKompliSkin } from '../utils/db';
-import { Upload, Music, Settings, Play, Info, Check, EyeOff, Sliders, Volume2, VolumeX, Trophy, HelpCircle, X, Trash2, Search, Tv } from 'lucide-react';
+import { saveOszFile, getAllOszFiles, deleteOszFile, saveCustomAsset, saveKompliSkin, getAllKompliSkins, deleteKompliSkin, getOszFile } from '../utils/db';
+import { Upload, Music, Settings, Play, Info, Check, EyeOff, Sliders, Volume2, VolumeX, Trophy, HelpCircle, X, Trash2, Search, Tv, Plus } from 'lucide-react';
 import { getReplaysForBeatmap, deleteReplay, saveReplay } from '../utils/replays';
+import { extractFileFromOsz } from '../utils/osuParser';
 
 interface BeatmapSelectorProps {
   onSelect: (beatmap: Beatmap, audioBuffer: AudioBuffer) => void;
@@ -46,6 +48,15 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [kompliSkins, setKompliSkins] = useState<any[]>([]);
   
+  const skinsSectionRef = useRef<HTMLDivElement>(null);
+  const [pendingDeleteSkin, setPendingDeleteSkin] = useState<string | null>(null);
+  const skinLongPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const skinCancelDeleteTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [cloningModalState, setCloningModalState] = useState<'closed' | 'initial' | 'select_map' | 'change_something'>('closed');
+  const [selectedMapGroupToClone, setSelectedMapGroupToClone] = useState<MapGroup | null>(null);
+  const cloneFileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     getAllKompliSkins().then(skins => setKompliSkins(skins.map(s => s.data)));
   }, []);
@@ -64,6 +75,12 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const playReplay = async (ver: Beatmap, playerName: string) => {
+    if (!settings.skinPreset) {
+      setErrorMsg('Kein Skin ausgewählt! Bitte öffne die Einstellungen (Zahnrad-Symbol oben rechts) und wähle einen Kompli-Skin aus.');
+      setShowSettingsDrawer(true);
+      return;
+    }
+    const group = mapGroups.find(g => g.versions.some(v => v.id === ver.id));
     setActiveReplayModalGroup(null);
     document.title = `${ver.title} - loading`;
     setIsLoading(true);
@@ -72,11 +89,31 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
     try {
       let audioBuffer: AudioBuffer;
 
+      let usedAudioBlob: Blob | null = ver.audioBlob || null;
+      if (!usedAudioBlob && ver.audioFilename && group?.fileName) {
+        const oszBlob = await getOszFile(group.fileName);
+        if (oszBlob) {
+          usedAudioBlob = await extractFileFromOsz(oszBlob, ver.audioFilename);
+        }
+      }
+
+      if (!settings.safeMode && ver.videoFilename && group?.fileName) {
+        setLoadingStep('Lade Hintergrund-Video...');
+        const oszBlob = await getOszFile(group.fileName);
+        if (oszBlob) {
+          const videoBlob = await extractFileFromOsz(oszBlob, ver.videoFilename);
+          if (videoBlob) {
+            ver.videoBlob = videoBlob;
+            ver.videoUrl = URL.createObjectURL(videoBlob);
+          }
+        }
+      }
+
       if (ver.id === 'built-in-synthwave-tutorial') {
         audioBuffer = await generateAudioBufferForBeatmap();
-      } else if (ver.audioBlob) {
+      } else if (usedAudioBlob) {
         const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const arrayBuffer = await ver.audioBlob.arrayBuffer();
+        const arrayBuffer = await usedAudioBlob.arrayBuffer();
         audioBuffer = await ctx.decodeAudioData(arrayBuffer);
         ctx.close();
       } else {
@@ -163,9 +200,84 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
     }
   };
 
+  const handleCloneFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedMapGroupToClone || !selectedMapGroupToClone.fileName) return;
+
+    if (settings.safeMode && file.size > 30 * 1024 * 1024) {
+      setErrorMsg('Safe Mode: Die Datei ist zu groß (Maximal 30 MB). Größere Dateien können zu Abstürzen führen.');
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadingStep('Cloning Beatmap...');
+    setCloningModalState('closed');
+
+    try {
+      const dbFiles = await getAllOszFiles();
+      const originalOsz = dbFiles.find(f => f.name === selectedMapGroupToClone.fileName);
+      if (!originalOsz) throw new Error('Original file not found.');
+
+      const zip = new JSZip();
+      await zip.loadAsync(originalOsz.blob);
+
+      const newTitle = `${selectedMapGroupToClone.title} (Modified)`;
+      let oldAudioFilename = '';
+      const newAudioName = file.name;
+
+      const osuFiles = Object.keys(zip.files).filter(k => k.toLowerCase().endsWith('.osu'));
+      for (const osuFile of osuFiles) {
+        let content = await zip.file(osuFile)?.async('text');
+        if (content) {
+          const audioMatch = content.match(/^AudioFilename\s*:\s*(.+)$/m);
+          if (audioMatch) {
+            oldAudioFilename = audioMatch[1].trim();
+          }
+
+          content = content.replace(/^Title\s*:\s*.+$/m, `Title:${newTitle}`);
+          content = content.replace(/^TitleUnicode\s*:\s*.+$/m, `TitleUnicode:${newTitle}`);
+          content = content.replace(/^AudioFilename\s*:\s*(.+)$/m, `AudioFilename: ${newAudioName}`);
+          
+          if (newAudioName.toLowerCase().endsWith('.mp4')) {
+            // Remove existing Video lines if any
+            content = content.replace(/^Video,.+$/gm, '');
+            // Add new video line
+            content = content.replace(/\[Events\]\s*/m, `[Events]\nVideo,0,"${newAudioName}"\n`);
+          }
+
+          zip.file(osuFile, content);
+        }
+      }
+
+      if (oldAudioFilename) {
+         zip.remove(oldAudioFilename);
+      }
+      zip.file(newAudioName, file);
+
+      const newZipBlob = await zip.generateAsync({ type: 'blob' });
+      const newFileName = `${newTitle}.osz`;
+      
+      const fileToSave = new File([newZipBlob], newFileName, { type: 'application/octet-stream' });
+      await saveOszFile(newFileName, fileToSave);
+
+      // Force reload map list by processing the newly created beatmap archive
+      await processOszFile(fileToSave);
+      
+      setIsLoading(false);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('Fehler beim Klonen der Beatmap.');
+      setIsLoading(false);
+    }
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
+      if (settings.safeMode && file.size > 80 * 1024 * 1024) {
+        setErrorMsg('Safe Mode: Das OSZ Archiv ist zu groß (Maximal 80 MB). Größere Dateien können schwächere Geräte überlasten.');
+        return;
+      }
       await processOszFile(file);
     }
   };
@@ -194,7 +306,8 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
         setLoadingStep('Speichere Kompli-Skin...');
         const newSkin = {
           name: skinCheck.skinName || displayName,
-          customSkinColors: skinCheck.customSkinColors
+          customSkinColors: skinCheck.customSkinColors,
+          customSkinImages: skinCheck.customSkinImages
         };
         await saveKompliSkin(newSkin.name, newSkin);
         
@@ -202,6 +315,9 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
         const skinsList = await getAllKompliSkins();
         setKompliSkins(skinsList.map(s => s.data));
         
+        setShowSettingsDrawer(true);
+        setTimeout(() => skinsSectionRef.current?.scrollIntoView({ behavior: 'smooth' }), 300);
+
         document.title = 'Skin importiert! ✨';
         setTimeout(() => { document.title = 'yada!'; }, 2000);
         setIsLoading(false);
@@ -250,6 +366,11 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
   };
 
   const playBeatmap = async (gIdx: number, vIdx: number) => {
+    if (!settings.skinPreset) {
+      setErrorMsg('Kein Skin ausgewählt! Bitte öffne die Einstellungen (Zahnrad-Symbol oben rechts) und wähle einen Kompli-Skin aus.');
+      setShowSettingsDrawer(true);
+      return;
+    }
     if (mapGroups.length === 0) return;
 
     const group = mapGroups[gIdx];
@@ -265,13 +386,33 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
     try {
       let audioBuffer: AudioBuffer;
 
+      let usedAudioBlob: Blob | null = ver.audioBlob || null;
+      if (!usedAudioBlob && ver.audioFilename && group.fileName) {
+        const oszBlob = await getOszFile(group.fileName);
+        if (oszBlob) {
+          usedAudioBlob = await extractFileFromOsz(oszBlob, ver.audioFilename);
+        }
+      }
+
+      if (!settings.safeMode && ver.videoFilename && group.fileName) {
+        setLoadingStep('Lade Hintergrund-Video...');
+        const oszBlob = await getOszFile(group.fileName);
+        if (oszBlob) {
+          const videoBlob = await extractFileFromOsz(oszBlob, ver.videoFilename);
+          if (videoBlob) {
+            ver.videoBlob = videoBlob;
+            ver.videoUrl = URL.createObjectURL(videoBlob);
+          }
+        }
+      }
+
       if (ver.id === 'built-in-synthwave-tutorial') {
         // Synthesize dynamic synth loops in the browser
         audioBuffer = await generateAudioBufferForBeatmap();
-      } else if (ver.audioBlob) {
+      } else if (usedAudioBlob) {
         // Parse raw uploaded MP3 / audio binary
         const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const arrayBuffer = await ver.audioBlob.arrayBuffer();
+        const arrayBuffer = await usedAudioBlob.arrayBuffer();
         audioBuffer = await ctx.decodeAudioData(arrayBuffer);
         ctx.close();
       } else {
@@ -467,7 +608,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
             id="dropzone-beatmap"
             onDragOver={handleDragOver}
             onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => setCloningModalState('initial')}
             className="border border-dashed border-white/15 hover:border-[#00E8FF]/40 rounded-sm flex flex-col items-center justify-center p-5 bg-[#16161F]/60 hover:bg-[#16161F]/90 transition-all cursor-pointer group shadow-[0_8px_30px_rgba(0,0,0,0.4)] gap-4"
           >
             <input
@@ -476,14 +617,15 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               className="hidden"
               onChange={handleFileChange}
             />
+            <input 
+              type="file" 
+              accept=".mp3,.wav,.mp4" 
+              ref={cloneFileInputRef} 
+              className="hidden" 
+              onChange={handleCloneFileChange} 
+            />
             <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform border border-white/5">
-              <Upload className="w-6 h-6 text-[#00E8FF]" />
-            </div>
-            <div className="text-center">
-              <p className="font-extrabold text-white uppercase tracking-widest text-xs">Importiere eigene Songs</p>
-              <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto leading-relaxed">
-                Ziehe deine <span className="text-[#00E8FF] font-bold font-mono text-[11px]">.osz / .zip</span> Songs hierhin.
-              </p>
+              <Plus className="w-6 h-6 text-[#00E8FF]" />
             </div>
           </div>
 
@@ -1239,263 +1381,181 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                 </button>
               </div>
 
-              {/* Skin Selection & Import */}
-              <div className="flex flex-col bg-[#111118] border border-white/5 rounded-sm p-4 gap-3">
+              {/* Kompli-Skins */}
+              <div ref={skinsSectionRef} className="flex flex-col bg-[#111118] border border-white/5 rounded-sm p-4 gap-3">
                 <div className="flex justify-between items-center pb-2 border-b border-white/5">
-                  <h4 className="font-semibold text-white text-xs tracking-wider uppercase">Klassische Skins</h4>
-                  <span className="text-[9px] text-[#00E8FF] font-bold uppercase tracking-wider bg-[#00E8FF]/10 px-1.5 py-0.5 rounded border border-[#00E8FF]/10 font-mono">NEU</span>
+                  <h4 className="font-semibold text-white text-xs tracking-wider uppercase">Skins (Kompli-Skins)</h4>
+                  <span className="text-[9px] text-[#00E8FF] font-bold uppercase tracking-wider bg-[#00E8FF]/10 px-1.5 py-0.5 rounded border border-[#00E8FF]/10 font-mono">AKTIV</span>
                 </div>
                 
-                <div className="grid grid-cols-5 gap-1.5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  {/* Built-in yada! as standard Kompli-skin */}
                   <button
                     onClick={() => {
-                      onUpdateSettings({ ...settings, skinPreset: 'argon' });
-                    }}
-                    className={`py-2 px-0.5 rounded-sm text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
-                      settings.skinPreset === 'argon' 
-                        ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
-                        : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-                    }`}
-                  >
-                    <span className="text-[7.5px] text-gray-500 font-bold -mb-1">ARGON</span>
-                    Argon
-                  </button>
-                  <button
-                    onClick={() => {
-                      onUpdateSettings({ ...settings, skinPreset: 'lazer' });
-                    }}
-                    className={`py-2 px-0.5 rounded-sm text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
-                      settings.skinPreset === 'lazer' 
-                        ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
-                        : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-                    }`}
-                  >
-                    <span className="text-[7.5px] text-gray-500 font-bold -mb-1">NEON</span>
-                    lazer
-                  </button>
-                  <button
-                    onClick={() => {
-                      onUpdateSettings({ ...settings, skinPreset: 'whitecat' });
-                    }}
-                    className={`py-2 px-0.5 rounded-sm text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
-                      settings.skinPreset === 'whitecat' 
-                        ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
-                        : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-                    }`}
-                  >
-                    <span className="text-[7.5px] text-gray-500 font-bold -mb-1">PRO</span>
-                    White Cat
-                  </button>
-                  <button
-                    onClick={() => {
-                      onUpdateSettings({ ...settings, skinPreset: 'classic' });
-                    }}
-                    className={`py-2 px-0.5 rounded-sm text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
-                      settings.skinPreset === 'classic' 
-                        ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
-                        : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-                    }`}
-                  >
-                    <span className="text-[7.5px] text-gray-500 font-bold -mb-1">ALT</span>
-                    Classic
-                  </button>
-                  <button
-                    onClick={() => {
+                      const isSelected = settings.skinPreset === 'yada!' || settings.skinPreset === 'lazer2018' || settings.skinPreset === 'yara!' || !settings.skinPreset;
                       onUpdateSettings({ 
                         ...settings, 
-                        skinPreset: 'custom', 
-                        customSkinColors: settings.customSkinColors || {
-                          hitcircleFill: '#3b82f6',
-                          hitcircleBorder: '#ffffff',
-                          approachCircleColor: '#60a5fa',
-                          textColor: '#ffffff',
-                          sliderTrackColor: '#2563eb',
-                        } 
+                        skinPreset: isSelected ? 'custom' : 'yada!' 
                       });
                     }}
-                    className={`py-2 px-0.5 rounded-sm text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
-                      settings.skinPreset === 'custom' 
-                        ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
+                    className={`py-2.5 px-1.5 rounded-sm text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer truncate ${
+                      (settings.skinPreset === 'yada!' || settings.skinPreset === 'lazer2018' || settings.skinPreset === 'yara!' || !settings.skinPreset)
+                        ? 'bg-[#FF65A9]/25 border-[#FF65A9] text-white shadow-[0_0_10px_rgba(255,101,169,0.35)] font-extrabold' 
                         : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
                     }`}
+                    title="yada! (Standard)"
                   >
-                    <span className="text-[7.5px] text-gray-500 font-bold -mb-1">DIY</span>
-                    Eigener
+                    <span className="text-[7.5px] text-[#FF65A9] font-bold -mb-1">yada!</span>
+                    yada! (Standard)
                   </button>
-                </div>
 
-                {settings.skinPreset === 'custom' && (
-                  <div className="flex flex-col gap-3 mt-1 bg-black/40 border border-white/5 p-3 rounded-sm text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-[#FF65A9] text-[10px] tracking-wide uppercase font-mono">Custom Skin Editor</span>
-                      <button 
-                        onClick={() => {
-                          const fileInput = document.createElement('input');
-                          fileInput.type = 'file';
-                          fileInput.accept = '.json';
-                          fileInput.onchange = async (e: any) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              try {
-                                const txt = await file.text();
-                                const parsed = JSON.parse(txt);
-                                if (parsed.skinPreset === 'custom' || parsed.customSkinColors) {
-                                  onUpdateSettings({
-                                    ...settings,
-                                    skinPreset: 'custom',
-                                    customSkinColors: {
-                                      hitcircleFill: parsed.customSkinColors?.hitcircleFill || '#3b82f6',
-                                      hitcircleBorder: parsed.customSkinColors?.hitcircleBorder || '#ffffff',
-                                      approachCircleColor: parsed.customSkinColors?.approachCircleColor || '#60a5fa',
-                                      textColor: parsed.customSkinColors?.textColor || '#ffffff',
-                                      sliderTrackColor: parsed.customSkinColors?.sliderTrackColor || '#2563eb',
-                                      spinnerColor: parsed.customSkinColors?.spinnerColor || '#ec4899',
-                                    }
-                                  });
-                                } else {
-                                  alert('Ungültige Skin-Datei. Benötigt customSkinColors Eigenschaften.');
-                                }
-                              } catch (err) {
-                                alert('Einlesen der Skin Datei fehlgeschlagen.');
-                              }
-                            }
-                          };
-                          fileInput.click();
-                        }}
-                        className="text-[10px] bg-white/5 text-pink-400 hover:bg-pink-500/20 px-2 py-0.5 rounded transition-all cursor-pointer font-bold border border-white/5"
-                      >
-                        JSON Importieren
-                      </button>
-                    </div>
+                  {/* Imported skins from IndexedDB */}
+                  {kompliSkins.map((skin, idx) => {
+                    const isSelected = settings.skinPreset === skin.name;
+                    const isPendingDelete = pendingDeleteSkin === skin.name;
+                    
+                    const handleMouseDown = () => {
+                      if (isPendingDelete) return; // if already pending delete, click will delete
+                      skinLongPressTimerRef.current = setTimeout(() => {
+                        setPendingDeleteSkin(skin.name);
+                        // set timer to cancel
+                        if (skinCancelDeleteTimerRef.current) clearTimeout(skinCancelDeleteTimerRef.current);
+                        skinCancelDeleteTimerRef.current = setTimeout(() => {
+                          setPendingDeleteSkin(null);
+                        }, 5000);
+                      }, 600); // 600ms long press
+                    };
+                    
+                    const handleMouseUp = () => {
+                      if (skinLongPressTimerRef.current) {
+                        clearTimeout(skinLongPressTimerRef.current);
+                        skinLongPressTimerRef.current = null;
+                      }
+                    };
 
-                    <div className="grid grid-cols-2 gap-2 mt-1">
-                      <div>
-                        <label className="text-gray-400 block text-[9px] uppercase tracking-wider mb-1">Circle Füllung</label>
-                        <div className="flex gap-1.5 items-center bg-[#15151F] border border-white/5 rounded-[2px] p-1">
-                          <input 
-                            type="color" 
-                            value={settings.customSkinColors?.hitcircleFill || '#3b82f6'} 
-                            onChange={(e) => onUpdateSettings({
-                              ...settings,
-                              customSkinColors: {
-                                ...(settings.customSkinColors || { hitcircleFill: '#3b82f6', hitcircleBorder: '#ffffff', approachCircleColor: '#60a5fa', textColor: '#ffffff', sliderTrackColor: '#2563eb' }),
-                                hitcircleFill: e.target.value
-                              }
-                            })}
-                            className="w-5 h-5 bg-transparent border-0 rounded cursor-pointer [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-0"
-                          />
-                          <span className="text-[9px] font-mono text-gray-400 uppercase">{settings.customSkinColors?.hitcircleFill || '#3B82F6'}</span>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-gray-400 block text-[9px] uppercase tracking-wider mb-1">Circle Rand</label>
-                        <div className="flex gap-1.5 items-center bg-[#15151F] border border-white/5 rounded-[2px] p-1">
-                          <input 
-                            type="color" 
-                            value={settings.customSkinColors?.hitcircleBorder || '#ffffff'} 
-                            onChange={(e) => onUpdateSettings({
-                              ...settings,
-                              customSkinColors: {
-                                ...(settings.customSkinColors || { hitcircleFill: '#3b82f6', hitcircleBorder: '#ffffff', approachCircleColor: '#60a5fa', textColor: '#ffffff', sliderTrackColor: '#2563eb' }),
-                                hitcircleBorder: e.target.value
-                              }
-                            })}
-                            className="w-5 h-5 bg-transparent border-0 rounded cursor-pointer [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-0"
-                          />
-                          <span className="text-[9px] font-mono text-gray-400 uppercase">{settings.customSkinColors?.hitcircleBorder || '#FFFFFF'}</span>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-gray-400 block text-[9px] uppercase tracking-wider mb-1">Approach-Kreis</label>
-                        <div className="flex gap-1.5 items-center bg-[#15151F] border border-white/5 rounded-[2px] p-1">
-                          <input 
-                            type="color" 
-                            value={settings.customSkinColors?.approachCircleColor || '#60a5fa'} 
-                            onChange={(e) => onUpdateSettings({
-                              ...settings,
-                              customSkinColors: {
-                                ...(settings.customSkinColors || { hitcircleFill: '#3b82f6', hitcircleBorder: '#ffffff', approachCircleColor: '#60a5fa', textColor: '#ffffff', sliderTrackColor: '#2563eb' }),
-                                approachCircleColor: e.target.value
-                              }
-                            })}
-                            className="w-5 h-5 bg-transparent border-0 rounded cursor-pointer [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-0"
-                          />
-                          <span className="text-[9px] font-mono text-gray-400 uppercase">{settings.customSkinColors?.approachCircleColor || '#60A5FA'}</span>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-gray-400 block text-[9px] uppercase tracking-wider mb-1">Slider Spur</label>
-                        <div className="flex gap-1.5 items-center bg-[#15151F] border border-white/5 rounded-[2px] p-1">
-                          <input 
-                            type="color" 
-                            value={settings.customSkinColors?.sliderTrackColor || '#2563eb'} 
-                            onChange={(e) => onUpdateSettings({
-                              ...settings,
-                              customSkinColors: {
-                                ...(settings.customSkinColors || { hitcircleFill: '#3b82f6', hitcircleBorder: '#ffffff', approachCircleColor: '#60a5fa', textColor: '#ffffff', sliderTrackColor: '#2563eb' }),
-                                sliderTrackColor: e.target.value
-                              }
-                            })}
-                            className="w-5 h-5 bg-transparent border-0 rounded cursor-pointer [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-0"
-                          />
-                          <span className="text-[9px] font-mono text-gray-400 uppercase">{settings.customSkinColors?.sliderTrackColor || '#2563EB'}</span>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-gray-400 block text-[9px] uppercase tracking-wider mb-1">Spinner</label>
-                        <div className="flex gap-1.5 items-center bg-[#15151F] border border-white/5 rounded-[2px] p-1">
-                          <input 
-                            type="color" 
-                            value={settings.customSkinColors?.spinnerColor || '#ec4899'} 
-                            onChange={(e) => onUpdateSettings({
-                              ...settings,
-                              customSkinColors: {
-                                ...(settings.customSkinColors || { hitcircleFill: '#3b82f6', hitcircleBorder: '#ffffff', approachCircleColor: '#60a5fa', textColor: '#ffffff', sliderTrackColor: '#2563eb' }),
-                                spinnerColor: e.target.value
-                              }
-                            })}
-                            className="w-5 h-5 bg-transparent border-0 rounded cursor-pointer [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-0"
-                          />
-                          <span className="text-[9px] font-mono text-gray-400 uppercase">{settings.customSkinColors?.spinnerColor || '#EC4899'}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+                    const handleMouseLeave = () => {
+                      if (skinLongPressTimerRef.current) {
+                        clearTimeout(skinLongPressTimerRef.current);
+                        skinLongPressTimerRef.current = null;
+                      }
+                    };
 
-              {/* Kompli-Skins */}
-              <div className="flex flex-col bg-[#111118] border border-white/5 rounded-sm p-4 gap-3">
-                <div className="flex justify-between items-center pb-2 border-b border-white/5">
-                  <h4 className="font-semibold text-white text-xs tracking-wider uppercase">Kompli-Skins</h4>
-                </div>
-                
-                {kompliSkins.length === 0 ? (
-                  <p className="text-xs text-gray-500">Keine Kompli-Skins importiert. Ziehe eine Skin-Zip (.osk) in den Importer.</p>
-                ) : (
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {kompliSkins.map((skin, idx) => (
+                    return (
                       <button
                         key={idx}
-                        onClick={() => {
-                          onUpdateSettings({ 
-                            ...settings, 
-                            skinPreset: 'custom', 
-                            customSkinColors: skin.customSkinColors
-                          });
+                        onMouseDown={handleMouseDown}
+                        onMouseUp={handleMouseUp}
+                        onMouseLeave={handleMouseLeave}
+                        onTouchStart={handleMouseDown}
+                        onTouchEnd={handleMouseUp}
+                        onClick={async () => {
+                          if (isPendingDelete) {
+                            // delete it
+                            await deleteKompliSkin(skin.name);
+                            if (skinCancelDeleteTimerRef.current) clearTimeout(skinCancelDeleteTimerRef.current);
+                            setPendingDeleteSkin(null);
+                            if (isSelected) {
+                              onUpdateSettings({ 
+                                ...settings, 
+                                skinPreset: '', 
+                                customSkinColors: undefined,
+                                customSkinImages: undefined
+                              });
+                            }
+                            const skinsList = await getAllKompliSkins();
+                            setKompliSkins(skinsList.map(s => s.data));
+                          } else {
+                            // regular click
+                            onUpdateSettings({ 
+                              ...settings, 
+                              skinPreset: isSelected ? '' : skin.name, 
+                              customSkinColors: isSelected ? undefined : skin.customSkinColors,
+                              customSkinImages: isSelected ? undefined : skin.customSkinImages
+                            });
+                          }
                         }}
-                        className={`py-2 px-0.5 rounded-sm text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer truncate ${
-                          settings.skinPreset === 'custom' && settings.customSkinColors === skin.customSkinColors
-                            ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)]' 
-                            : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                        className={`py-2.5 px-1.5 rounded-sm text-[10px] font-black transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer truncate ${
+                          isPendingDelete
+                            ? 'bg-[#ef4444]/20 border-[#ef4444] text-[#ef4444] animate-pulse font-extrabold shadow-[0_0_10px_rgba(239,68,68,0.35)]'
+                            : isSelected
+                              ? 'bg-[#00E8FF]/25 border-[#00E8FF] text-white shadow-[0_0_10px_rgba(0,232,255,0.2)] font-extrabold' 
+                              : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
                         }`}
                         title={skin.name}
                       >
-                        <span className="text-[7.5px] text-gray-500 font-bold -mb-1 truncate max-w-[50px]">KOMPLI</span>
-                        <span className="truncate max-w-[50px]">{skin.name}</span>
+                        {isPendingDelete ? (
+                          <>
+                            <span className="text-[7.5px] text-[#ef4444] font-bold -mb-1 truncate max-w-full">LÖSCHEN?</span>
+                            <span className="truncate max-w-full">Klicken zum Bestätigen</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-[7.5px] text-gray-500 font-bold -mb-1 truncate max-w-full">KOMPLI</span>
+                            <span className="truncate max-w-full">{skin.name}</span>
+                          </>
+                        )}
                       </button>
-                    ))}
+                    );
+                  })}
+                </div>
+                {kompliSkins.length === 0 && (
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    Ziehe eine weitere Skin-Zip (.osk oder .zip) in den Beatmap-Importer, um zusätzliche Skins hinzuzufügen.
+                  </p>
+                )}
+                
+                {settings.skinPreset && settings.skinPreset !== '' && (
+                  <div className="mt-3 flex items-center justify-between p-2 rounded-sm bg-white/5 border border-white/10">
+                    <div className="flex flex-col">
+                      <span className="text-white text-[11px] font-bold">Vollständigen Skin nutzen</span>
+                      <span className="text-gray-400 text-[9px] mt-0.5">Entfernt yada! UI (Lebensleiste, Score, Buttons) und nutzt stattdessen den Skin.</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer" 
+                        checked={settings.useFullSkin ?? false}
+                        onChange={(e) => onUpdateSettings({ ...settings, useFullSkin: e.target.checked })}
+                      />
+                      <div className="w-8 h-4 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#00E8FF]"></div>
+                    </label>
                   </div>
+                )}
+
+                {settings.useFullSkin && (
+                  <>
+                    <div className="mt-2 flex items-center justify-between p-2 rounded-sm bg-white/5 border border-white/10">
+                      <div className="flex flex-col">
+                        <span className="text-white text-[11px] font-bold">Automatische UI-Anpassung</span>
+                        <span className="text-gray-400 text-[9px] mt-0.5">Passt die Healthbar an den Spielfeldrand an.</span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only peer" 
+                          checked={settings.autoScaleUi ?? true}
+                          onChange={(e) => onUpdateSettings({ ...settings, autoScaleUi: e.target.checked })}
+                        />
+                        <div className="w-8 h-4 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#00E8FF]"></div>
+                      </label>
+                    </div>
+
+                    <div className="mt-2 p-2 rounded-sm bg-white/5 border border-white/10 flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-white text-[11px] font-bold">Custom UI Größe</span>
+                        <span className="text-[#00E8FF] text-[11px] font-mono font-bold">{(settings.customUiScale ?? 1.0).toFixed(2)}x</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.1" 
+                        max="2.0" 
+                        step="0.05" 
+                        value={settings.customUiScale ?? 1.0}
+                        onChange={(e) => onUpdateSettings({ ...settings, customUiScale: parseFloat(e.target.value) })}
+                        className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#00E8FF]"
+                      />
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -1535,6 +1595,81 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
           </button>
         </div>
       )}
+
+      {/* Cloning Modal */}
+      {cloningModalState !== 'closed' && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[160] flex flex-col items-center justify-center p-4">
+          <div className="bg-[#12121A] border border-white/10 rounded-lg p-6 max-w-md w-full shadow-2xl relative">
+            <button 
+              onClick={() => setCloningModalState('closed')}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            {cloningModalState === 'initial' && (
+              <div className="flex flex-col gap-4">
+                <h3 className="text-xl font-bold text-white mb-2">Beatmap Optionen</h3>
+                <button 
+                  onClick={() => setCloningModalState('select_map')}
+                  className="bg-[#00E8FF]/10 hover:bg-[#00E8FF]/20 border border-[#00E8FF]/30 text-[#00E8FF] py-4 rounded font-bold transition-colors"
+                >
+                  Clone Beatmaps
+                </button>
+                <button 
+                  onClick={() => {
+                    setCloningModalState('closed');
+                    fileInputRef.current?.click();
+                  }}
+                  className="bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded font-bold transition-colors"
+                >
+                  Import Beatmaps
+                </button>
+              </div>
+            )}
+
+            {cloningModalState === 'select_map' && (
+              <div className="flex flex-col gap-4">
+                <h3 className="text-xl font-bold text-white mb-2">Wähle eine Beatmap zum Klonen</h3>
+                <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+                  {mapGroups.map(group => (
+                    <button
+                      key={group.title}
+                      onClick={() => {
+                        setSelectedMapGroupToClone(group);
+                        setCloningModalState('change_something');
+                      }}
+                      className="text-left bg-white/5 hover:bg-white/10 border border-white/5 p-3 rounded transition-colors"
+                    >
+                      <div className="font-bold text-white truncate">{group.title}</div>
+                      <div className="text-xs text-gray-400 truncate">{group.artist}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {cloningModalState === 'change_something' && (
+              <div className="flex flex-col gap-4">
+                <h3 className="text-xl font-bold text-white mb-2">Change something?</h3>
+                <button 
+                  onClick={() => cloneFileInputRef.current?.click()}
+                  className="bg-[#00E8FF]/10 hover:bg-[#00E8FF]/20 border border-[#00E8FF]/30 text-[#00E8FF] py-4 rounded font-bold transition-colors"
+                >
+                  Upload new song (.mp3, .wav, .mp4)
+                </button>
+                <button 
+                  onClick={() => alert('Work in Progress')}
+                  className="bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded font-bold transition-colors"
+                >
+                  Change beatmap
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

@@ -42,6 +42,7 @@ export interface Beatmap {
   bgBlob?: Blob;
   videoBlob?: Blob;
   videoFilename?: string;
+  colors?: string[];
 
   hitObjects: HitObject[];
   duration: number; // in milliseconds
@@ -72,23 +73,28 @@ export interface GameSettings {
   uiScale: number; // UI/Playfield scale factor (e.g. 0.8, 1.0, 1.2)
   autoScaleField: boolean; // Auto adaptive playfield container
   audioOffset: number; // Audio latency offset in milliseconds
-  skinPreset: 'lazer' | 'argon' | 'whitecat' | 'classic' | 'custom';
+  skinPreset: string;
   customSkinColors?: {
-    hitcircleFill: string;
-    hitcircleBorder: string;
-    approachCircleColor: string;
-    textColor: string;
-    sliderTrackColor: string;
+    comboColors?: string[];
+    textColor?: string;
+    sliderTrackColor?: string;
+    sliderBorderColor?: string;
     spinnerColor?: string;
+    mania?: Record<number, { colors: Record<string, string>, images: Record<string, string> }>;
   };
   customSkinImages?: {
     cursorUrl?: string;
     hitcircleUrl?: string;
+    [key: string]: string | undefined;
   };
+  useFullSkin?: boolean;
   disableRoundedCorners?: boolean;
   randomKidMode?: boolean;
   enableReplays?: boolean;
   useCustomIntro?: boolean;
+  customUiScale?: number;
+  autoScaleUi?: boolean;
+  safeMode?: boolean;
 }
 
 export interface Replay {

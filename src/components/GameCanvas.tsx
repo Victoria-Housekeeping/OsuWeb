@@ -35,6 +35,34 @@ interface HitBurst {
   result: number;
 }
 
+const tintCache = new Map<string, HTMLCanvasElement>();
+
+function getTintedCanvas(img: HTMLImageElement, color: string): HTMLCanvasElement | null {
+  if (img.dataset.loaded !== 'true') {
+    return null;
+  }
+  const cacheKey = `${img.src}_${color}`;
+  if (tintCache.has(cacheKey)) {
+    return tintCache.get(cacheKey)!;
+  }
+  
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth || img.width || 128;
+  canvas.height = img.naturalHeight || img.height || 128;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(img, 0, 0);
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(img, 0, 0);
+  }
+  
+  tintCache.set(cacheKey, canvas);
+  return canvas;
+}
+
 export const GameCanvas: React.FC<GameCanvasProps> = ({
   beatmap,
   audioBuffer,
@@ -57,22 +85,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [isPlayingState, setIsPlayingState] = useState(true);
   const [isFailed, setIsFailed] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
+  const [isPausedMenuOpen, setIsPausedMenuOpen] = useState(false);
   
   const startTimeRef = useRef<number>(0); // system timestamp corresponding to audio start
   const playheadMsRef = useRef<number>(0); // current duration in ms
   const pausedTimeMsRef = useRef<number>(0); // stored duration when paused
 
   // Game state
-  const [stats, setStats] = useState<PlayStats>({
-    score: 0,
-    combo: 0,
-    maxCombo: 0,
-    hp: 100,
-    hits300: 0,
-    hits100: 0,
-    hits50: 0,
-    misses: 0,
-  });
   const statsRef = useRef<PlayStats>({
     score: 0,
     combo: 0,
@@ -88,6 +107,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const floatersRef = useRef<FloatingHitResult[]>([]);
   const trailsRef = useRef<TouchTrail[]>([]);
   const burstsRef = useRef<HitBurst[]>([]);
+  const loadedCustomSkinImagesRef = useRef<Record<string, HTMLImageElement>>({});
   const lastFrameTimeRef = useRef<number>(0);
   const activeManiaKeysRef = useRef<boolean[]>([false, false, false, false]);
   const activeDesktopKeysRef = useRef({
@@ -104,12 +124,31 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const [spinnerProgress, setSpinnerProgress] = useState<number | null>(null);
 
   // Colors
-  const comboColors = [
-    'rgb(236, 72, 153)',  // Neon Pink
-    'rgb(6, 182, 212)',   // Electric Cyan
-    'rgb(234, 179, 8)',   // Neon Yellow
-    'rgb(34, 197, 94)',   // Acid Green
+  const defaultComboColors = beatmap.colors && beatmap.colors.length > 0
+    ? beatmap.colors
+    : [
+        'rgb(236, 72, 153)',  // Neon Pink
+        'rgb(6, 182, 212)',   // Electric Cyan
+        'rgb(234, 179, 8)',   // Neon Yellow
+        'rgb(34, 197, 94)',   // Acid Green
+      ];
+
+  const lazer2018ComboColors = [
+    'rgb(180, 255, 50)',  // Acid Green
+    'rgb(0, 255, 255)',   // Cyan
+    'rgb(255, 0, 255)',   // Magenta
+    'rgb(255, 255, 0)',   // Yellow
+    'rgb(255, 173, 0)',   // Orange
+    'rgb(0, 255, 0)',     // Green
+    'rgb(255, 0, 0)',     // Red
+    'rgb(255, 255, 255)', // White
   ];
+
+  const comboColors = (settings.skinPreset === 'lazer2018' || settings.skinPreset === 'yada!' || settings.skinPreset === 'yara!' || !settings.skinPreset)
+    ? lazer2018ComboColors
+    : (settings.customSkinColors && settings.customSkinColors.comboColors && settings.customSkinColors.comboColors.length > 0
+        ? settings.customSkinColors.comboColors
+        : (beatmap.colors && beatmap.colors.length > 0 ? beatmap.colors : defaultComboColors));
 
   // Map settings
   const circleSize = beatmap.circleSize;
@@ -122,10 +161,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   // Playfield width is 512, height is 384.
   const baseCSSize = (109 - 9 * circleSize) * 0.7; // diameter on standard size
   
-  // Hit windows based on OD
-  const hit300Window = 80 - 6 * overallDifficulty;
-  const hit100Window = 140 - 8 * overallDifficulty;
-  const hit50Window = 200 - 10 * overallDifficulty;
+  // Hit windows based on OD (leniency for web/touch)
+  const leniency = settings.touchControls ? 50 : 25;
+  const hit300Window = 80 - 6 * overallDifficulty + leniency;
+  const hit100Window = 140 - 8 * overallDifficulty + leniency;
+  const hit50Window = 200 - 10 * overallDifficulty + leniency;
 
   // Approach time (Preempt) in ms based on AR
   const approachDuration = approachRate < 5 
@@ -169,8 +209,142 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
   };
 
+  // Load custom skin images whenever the skin preset changes
+  useEffect(() => {
+    let active = true;
+
+    const loadSkin = async () => {
+      if (settings.skinPreset === 'lazer2018' || settings.skinPreset === 'yada!' || settings.skinPreset === 'yara!' || !settings.skinPreset) {
+        const newLoadedImages: Record<string, HTMLImageElement> = {};
+        const skinDir = 'OSU! Lazer 2018.406.0 by DP05';
+        const filesToLoad: Record<string, string> = {
+          cursorUrl: `./${skinDir}/cursor.png`,
+          hitcircleUrl: `./${skinDir}/hitcircle.png`,
+          hitcircleoverlayUrl: `./${skinDir}/hitcircleoverlay.png`,
+          approachcircleUrl: `./${skinDir}/approachcircle.png`,
+          sliderbUrl: `./${skinDir}/sliderb.png`,
+          sliderfollowcircleUrl: `./${skinDir}/sliderfollowcircle.png`,
+          reversearrowUrl: `./${skinDir}/reversearrow.png`,
+          sliderendcircleUrl: `./${skinDir}/sliderendcircle.png`,
+          sliderendcircleoverlayUrl: `./${skinDir}/sliderendcircleoverlay.png`,
+          hit0Url: `./${skinDir}/hit0.png`,
+          hit50Url: `./${skinDir}/hit50.png`,
+          hit100Url: `./${skinDir}/hit100.png`,
+          hit300Url: `./${skinDir}/hit300.png`,
+          'scorebar-bgUrl': `./${skinDir}/scorebar-bg.png`,
+          'scorebar-colourUrl': `./${skinDir}/scorebar-colour.png`,
+          'pause-continueUrl': `./${skinDir}/pause-continue.png`,
+          'pause-retryUrl': `./${skinDir}/pause-retry.png`,
+          'pause-backUrl': `./${skinDir}/pause-back.png`
+        };
+
+        for (let i = 0; i <= 9; i++) {
+          filesToLoad[`score-${i}Url`] = `./${skinDir}/score-${i}.png`;
+        }
+        filesToLoad['score-dotUrl'] = `./${skinDir}/score-dot.png`;
+        filesToLoad['score-percentUrl'] = `./${skinDir}/score-percent.png`;
+        filesToLoad['score-commaUrl'] = `./${skinDir}/score-comma.png`;
+
+        const loadPromises = Object.entries(filesToLoad).map(([key, url]) => {
+          return new Promise<void>((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+              if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                img.dataset.loaded = 'true';
+              } else {
+                img.dataset.loaded = 'false';
+              }
+              resolve();
+            };
+            img.onerror = () => {
+              img.dataset.loaded = 'false';
+              resolve();
+            };
+            img.src = url;
+            newLoadedImages[key] = img;
+          });
+        });
+        await Promise.all(loadPromises);
+        if (active) {
+          loadedCustomSkinImagesRef.current = newLoadedImages;
+        }
+      } else if (settings.skinPreset && settings.skinPreset !== 'custom') {
+        // Load the skin images from IndexedDB based on skinPreset (which stores the skin's name)!
+        try {
+          const { getAllKompliSkins } = await import('../utils/db');
+          const skins = await getAllKompliSkins();
+          const found = skins.find(s => s.name === settings.skinPreset);
+          if (found && found.data && found.data.customSkinImages) {
+            const newLoadedImages: Record<string, HTMLImageElement> = {};
+            const loadPromises = Object.entries(found.data.customSkinImages).map(([key, url]) => {
+              if (typeof url === 'string') {
+                return new Promise<void>((resolve) => {
+                  const img = new Image();
+                  img.onload = () => {
+                    img.dataset.loaded = 'true';
+                    resolve();
+                  };
+                  img.onerror = () => {
+                    img.dataset.loaded = 'false';
+                    resolve();
+                  };
+                  img.src = url;
+                  newLoadedImages[key] = img;
+                });
+              }
+              return Promise.resolve();
+            });
+            await Promise.all(loadPromises);
+            if (active) {
+              loadedCustomSkinImagesRef.current = newLoadedImages;
+            }
+          } else {
+            if (active) loadedCustomSkinImagesRef.current = {};
+          }
+        } catch (err) {
+          console.error('Failed to load Kompli-Skin inside GameCanvas:', err);
+          if (active) loadedCustomSkinImagesRef.current = {};
+        }
+      } else if (settings.skinPreset === 'custom' && settings.customSkinImages) {
+        const newLoadedImages: Record<string, HTMLImageElement> = {};
+        const loadPromises = Object.entries(settings.customSkinImages).map(([key, url]) => {
+          if (typeof url === 'string') {
+            return new Promise<void>((resolve) => {
+              const img = new Image();
+              img.onload = () => {
+                img.dataset.loaded = 'true';
+                resolve();
+              };
+              img.onerror = () => {
+                img.dataset.loaded = 'false';
+                resolve();
+              };
+              img.src = url;
+              newLoadedImages[key] = img;
+            });
+          }
+          return Promise.resolve();
+        });
+        await Promise.all(loadPromises);
+        if (active) {
+          loadedCustomSkinImagesRef.current = newLoadedImages;
+        }
+      } else {
+        if (active) loadedCustomSkinImagesRef.current = {};
+      }
+    };
+
+    loadSkin();
+
+    return () => {
+      active = false;
+    };
+  }, [settings.skinPreset, settings.customSkinImages]);
+
   // Setup game
   useEffect(() => {
+    let active = true;
+
     // Clone hit objects to maintain hit state
     hitObjectsStateRef.current = beatmap.hitObjects.map(obj => ({
       ...obj,
@@ -189,6 +363,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // Keyboard bindings
     const handleKeyDown = (e: KeyboardEvent) => {
       const keyLower = e.key.toLowerCase();
+      
+      if (keyLower === 'escape') {
+        if (settings.useFullSkin) {
+          setIsPausedMenuOpen(prev => !prev);
+          handleTogglePlay();
+        }
+        return;
+      }
       
       if (settings.gameMode === 'mania') {
         let lane = -1;
@@ -386,17 +568,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // Reset state
     setIsFailed(false);
     setIsFinished(false);
-    setStats({
-      score: 0,
-      combo: 0,
-      maxCombo: 0,
-      hp: 100,
-      hits300: 0,
-      hits100: 0,
-      hits50: 0,
-      misses: 0,
-    });
-    statsRef.current = {
+    const initStats = {
       score: 0,
       combo: 0,
       maxCombo: 0,
@@ -406,6 +578,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       hits50: 0,
       misses: 0,
     };
+    statsRef.current = initStats;
+    updateStats(initStats);
     playheadMsRef.current = 0;
     pausedTimeMsRef.current = 0;
     floatersRef.current = [];
@@ -443,10 +617,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const autoScaleField = settings.autoScaleField !== false; // Default to true if undefined
     
     // Fit maintaining ratio with extra boundary margin
-    const baseScale = Math.min((canvasWidth - 100) / osuW, (canvasHeight - 120) / osuH);
+    const marginY = settings.useFullSkin ? 60 : 120;
+    const marginX = settings.useFullSkin ? 60 : 100;
+    const baseScale = Math.min((canvasWidth - marginX) / osuW, (canvasHeight - marginY) / osuH);
     const scale = autoScaleField ? baseScale : (baseScale * uiScale);
     const offsetX = (canvasWidth - osuW * scale) / 2;
-    const offsetY = (canvasHeight + 10 - osuH * scale) / 2;
+    const offsetY = settings.useFullSkin ? (canvasHeight - osuH * scale) / 2 : (canvasHeight + 10 - osuH * scale) / 2;
 
     return { scale, offsetX, offsetY };
   };
@@ -476,10 +652,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
 
     // Check passive HP Drain (osu! drain over time)
-    // Reduce health incrementally
+    // Reduce health incrementally, but only during active sections
     const curStats = statsRef.current;
-    const passiveHpReduction = (hpDrain * 0.005) * (dt / 16.6); // scale with timescale/framerate
-    let newHp = curStats.hp - passiveHpReduction;
+    const isBreakTime = hitObjectsStateRef.current.every(obj => playhead < obj.time - 3000 || playhead > (obj.endTime || obj.time) + 1000);
+    const passiveHpReduction = isBreakTime ? 0 : (hpDrain * 0.0025) * (dt / 16.6); // heavily reduced drain
+    let newHp = settings.autoPlay ? 100 : curStats.hp - passiveHpReduction;
     
     // Auto Play automation!
     if (settings.autoPlay) {
@@ -540,7 +717,56 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const updateStats = (diff: Partial<PlayStats>) => {
     const updated = { ...statsRef.current, ...diff };
     statsRef.current = updated;
-    setStats(updated);
+    
+    const hpBar = document.getElementById('hud-hp-bar');
+    if (hpBar) {
+      hpBar.style.width = `${updated.hp}%`;
+      hpBar.className = `h-full transition-all duration-75 shadow-[0_0_10px_rgba(0,232,255,0.8)] ${
+        updated.hp < 30 
+          ? 'bg-gradient-to-r from-red-500 to-rose-600 shadow-[0_0_14px_rgba(239,68,68,0.95)] animate-pulse' 
+          : 'bg-gradient-to-r from-[#00CFFF] via-[#00E8FF] to-[#33EFFF]'
+      }`;
+    }
+
+    const accuracyEl = document.getElementById('hud-accuracy');
+    if (accuracyEl) {
+      const totalHits = updated.hits300 + updated.hits100 + updated.hits50 + updated.misses;
+      let acc = 100;
+      if (totalHits > 0) {
+        const actual = updated.hits300 * 300 + updated.hits100 * 100 + updated.hits50 * 50;
+        acc = (actual / (totalHits * 300)) * 100;
+      }
+      accuracyEl.innerText = `${acc.toFixed(2)}%`;
+    }
+
+    const scoreEl = document.getElementById('hud-score');
+    if (scoreEl) {
+      const scoreStr = updated.score.toString().padStart(8, '0');
+      const firstNonZero = scoreStr.search(/[1-9]/);
+      if (firstNonZero === -1) {
+        scoreEl.innerHTML = `<span class="font-mono text-xl md:text-2xl text-white/30 font-extrabold tracking-wider">${scoreStr}</span>`;
+      } else {
+        const leading = scoreStr.slice(0, firstNonZero);
+        const active = scoreStr.slice(firstNonZero);
+        scoreEl.innerHTML = `<span class="font-mono text-xl md:text-2xl tracking-wider font-extrabold"><span class="text-white/35">${leading}</span><span class="text-white">${active}</span></span>`;
+      }
+    }
+
+    const comboEl = document.getElementById('hud-combo-text');
+    if (comboEl) {
+      comboEl.innerHTML = `${updated.combo}<span class="text-2xl font-black not-italic ml-1">x</span>`;
+      const container = document.getElementById('hud-combo-container');
+      if (container) {
+        container.classList.remove('animate-combo-pop');
+        void container.offsetWidth;
+        container.classList.add('animate-combo-pop');
+      }
+    }
+    
+    const maxComboEl = document.getElementById('hud-max-combo');
+    if (maxComboEl) {
+      maxComboEl.innerText = `MAX: ${updated.maxCombo}x`;
+    }
   };
 
   const triggerHit = (obj: HitObject, scoreResult: 300 | 100 | 50 | 0) => {
@@ -563,10 +789,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
 
     let hpDiff = 0;
-    if (scoreResult === 300) hpDiff = 8;
-    else if (scoreResult === 100) hpDiff = 3;
-    else if (scoreResult === 50) hpDiff = 1;
-    else hpDiff = -15 * (hpDrain * 0.15 + 0.8); // Scale miss harm with difficulty setting
+    if (scoreResult === 300) hpDiff = 12;
+    else if (scoreResult === 100) hpDiff = 5;
+    else if (scoreResult === 50) hpDiff = 2;
+    else hpDiff = -10 * (hpDrain * 0.1 + 0.8); // Scale miss harm with difficulty setting
 
     const newHp = Math.max(0, Math.min(100, cur.hp + hpDiff));
 
@@ -584,7 +810,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         id: `burst-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         x: obj.x,
         y: obj.y,
-        color: comboColors[obj.comboSet],
+        color: comboColors[obj.comboSet % comboColors.length],
         timestamp: playheadMsRef.current,
         result: scoreResult,
       });
@@ -703,6 +929,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const rect = canvas.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
+
+    if (settings.useFullSkin) {
+      // Calculate active uiScale for bounding box check
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.width / dpr;
+      const h = canvas.height / dpr;
+      const { scale, offsetX } = getTransforms(w, h);
+      
+      let uiScale = scale * 0.5;
+      const customImgs = loadedCustomSkinImagesRef.current;
+      const bgImg = customImgs['scorebar-bgUrl'];
+      const autoScaleUi = settings.autoScaleUi !== false;
+      
+      if (autoScaleUi && bgImg && bgImg.dataset.loaded === 'true' && bgImg.width > 0) {
+        const targetWidth = offsetX + 512 * scale;
+        uiScale = targetWidth / bgImg.width;
+      }
+      uiScale *= (settings.customUiScale ?? 1.0);
+    }
 
     mousePosRef.current = { x: clickX, y: clickY };
 
@@ -931,7 +1176,112 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const { scale, offsetX, offsetY } = getTransforms(w, h);
     const playhead = playheadMsRef.current;
     const renderScale = settings.autoScaleField !== false ? (settings.uiScale || 1.0) : 1.0;
-    const skin = settings.skinPreset || 'lazer';
+    const rawSkin = settings.skinPreset || 'yada!';
+    const skin: string = (rawSkin === 'lazer2018' || rawSkin === 'yada!' || rawSkin === 'yara!') ? 'yada!' : 'custom';
+
+    // Render Skin UI (if useFullSkin is active) at the very bottom layer
+    if (settings.useFullSkin) {
+      const s = statsRef.current;
+      const customImgs = loadedCustomSkinImagesRef.current;
+      
+      let uiScale = scale * 0.5; // Scale down because most elements are @2x
+      const bgImg = customImgs['scorebar-bgUrl'];
+      const autoScaleUi = settings.autoScaleUi !== false; // defaults to true
+      
+      if (autoScaleUi && bgImg && bgImg.dataset.loaded === 'true' && bgImg.width > 0) {
+        // Touch the right edge of the playfield (offsetX + 512 * scale)
+        const targetWidth = offsetX + 512 * scale;
+        uiScale = targetWidth / bgImg.width;
+      }
+      
+      // Apply the user's custom scale multiplier from settings
+      const customUiScaleMultiplier = settings.customUiScale ?? 1.0;
+      uiScale *= customUiScaleMultiplier;
+
+      // HP Bar
+      if (bgImg && bgImg.dataset.loaded === 'true') {
+        ctx.drawImage(bgImg, 0, 0, bgImg.width * uiScale, bgImg.height * uiScale);
+        
+        if (customImgs['scorebar-colourUrl']?.dataset.loaded === 'true') {
+          const colImg = customImgs['scorebar-colourUrl'];
+          // Render HP based on width
+          const hpWidth = colImg.width * (s.hp / 100);
+          ctx.drawImage(
+            colImg, 
+            0, 0, hpWidth, colImg.height, 
+            3 * uiScale, 3 * uiScale, hpWidth * uiScale, colImg.height * uiScale
+          );
+        }
+        
+        if (customImgs['scorebar-markerUrl']?.dataset.loaded === 'true') {
+          const markerImg = customImgs['scorebar-markerUrl'];
+          const markerX = (customImgs['scorebar-colourUrl']?.width || 0) * (s.hp / 100) * uiScale;
+          ctx.drawImage(markerImg, markerX - (markerImg.width * uiScale) / 2, 0, markerImg.width * uiScale, markerImg.height * uiScale);
+        }
+      }
+
+      // Helper to draw numbers from custom skin
+      const drawCustomNumber = (numStr: string, x: number, y: number, prefix: string, anchorRight = false, numScale = 1) => {
+        let currentX = x;
+        let totalWidth = 0;
+        
+        // Calculate total width if anchor right
+        if (anchorRight) {
+          for (let i = 0; i < numStr.length; i++) {
+            const char = numStr[i];
+            let key = '';
+            if (char === '.') key = `${prefix}dotUrl`;
+            else if (char === '%') key = `${prefix}percentUrl`;
+            else if (char === ',') key = `${prefix}commaUrl`;
+            else if (char === 'x') key = `${prefix}xUrl`;
+            else key = `${prefix}${char}Url`;
+            
+            const img = customImgs[key];
+            if (img?.dataset.loaded === 'true') {
+              totalWidth += img.width * numScale;
+            } else {
+              totalWidth += 20 * numScale; // fallback
+            }
+          }
+          currentX = x - totalWidth;
+        }
+
+        for (let i = 0; i < numStr.length; i++) {
+          const char = numStr[i];
+          let key = '';
+          if (char === '.') key = `${prefix}dotUrl`;
+          else if (char === '%') key = `${prefix}percentUrl`;
+          else if (char === ',') key = `${prefix}commaUrl`;
+          else if (char === 'x') key = `${prefix}xUrl`;
+          else key = `${prefix}${char}Url`;
+          
+          const img = customImgs[key];
+          if (img?.dataset.loaded === 'true') {
+            ctx.drawImage(img, currentX, y, img.width * numScale, img.height * numScale);
+            currentX += img.width * numScale;
+          } else {
+            ctx.fillStyle = 'white';
+            ctx.font = `bold ${30 * numScale}px sans-serif`;
+            ctx.textAlign = 'left';
+            ctx.fillText(char, currentX + 10 * numScale, y + 25 * numScale);
+            currentX += 20 * numScale;
+          }
+        }
+      };
+
+      // Score
+      const scoreStr = s.score.toString().padStart(7, '0');
+      drawCustomNumber(scoreStr, w - 10 * uiScale, 10 * uiScale, 'score-', true, uiScale * 0.9);
+
+      // Accuracy
+      const acc = getAccuracyRef();
+      const accStr = acc.toFixed(2) + '%';
+      drawCustomNumber(accStr, w - 15 * uiScale, 45 * uiScale, 'score-', true, uiScale * 0.5);
+
+      // Combo
+      const comboStr = s.combo + 'x';
+      drawCustomNumber(comboStr, 10 * uiScale, h - 100 * uiScale, 'combo-', false, uiScale * 1);
+    }
 
     // === MANIA MODE RENDERING ===
     if (settings.gameMode === 'mania') {
@@ -961,20 +1311,73 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.stroke();
       }
 
+      // Draw Judgment Line / Hit Window Area
+      const hitTargetY = startY + height - 20 * scale;
+      
+      // Draw Hit Window Background
+      const hitWindowPx = (hit300Window / approachDuration) * (height - 20 * scale);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+      ctx.fillRect(startX, hitTargetY - hitWindowPx, trackWidth, hitWindowPx * 2);
+      
+      // Draw actual exact perfect hit line
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 2 * scale;
+      ctx.beginPath();
+      ctx.moveTo(startX, hitTargetY);
+      ctx.lineTo(startX + trackWidth, hitTargetY);
+      ctx.stroke();
+
       // Draw keys and press feedback
       const keys = ['D', 'F', 'J', 'K'];
       for (let i = 0; i < 4; i++) {
         const isPressed = activeManiaKeysRef.current[i];
+        
+        let laneColor = '#00E8FF';
+        let keyImage = '';
+        let keyImageD = '';
+        if (settings.skinPreset === 'custom') {
+          if (settings.customSkinColors?.mania?.[4]) {
+            const maniaConf = settings.customSkinColors.mania[4];
+            if (maniaConf.colors?.[`colourlight${i + 1}`]) laneColor = maniaConf.colors[`colourlight${i + 1}`];
+            keyImage = maniaConf.images?.[`keyimage${i}`] || '';
+            keyImageD = maniaConf.images?.[`keyimage${i}d`] || '';
+          }
+          if (!keyImage) keyImage = (i === 0 || i === 3) ? 'mania-key1' : 'mania-key2';
+          if (!keyImageD) keyImageD = (i === 0 || i === 3) ? 'mania-key1d' : 'mania-key2d';
+        }
+
         if (isPressed) {
           const grd = ctx.createLinearGradient(0, startY + height, 0, startY + height - 150 * scale);
-          grd.addColorStop(0, 'rgba(0,232,255, 0.5)');
-          grd.addColorStop(1, 'rgba(0,232,255, 0)');
+          const colorValues = laneColor.startsWith('#') ? laneColor : '#00E8FF';
+          // Convert hex to rgb for rgba usage if it's hex
+          let r = 0, g = 232, b = 255;
+          if (colorValues.length === 7) {
+            r = parseInt(colorValues.slice(1, 3), 16);
+            g = parseInt(colorValues.slice(3, 5), 16);
+            b = parseInt(colorValues.slice(5, 7), 16);
+          }
+          grd.addColorStop(0, `rgba(${r},${g},${b}, 0.5)`);
+          grd.addColorStop(1, `rgba(${r},${g},${b}, 0)`);
           ctx.fillStyle = grd;
           ctx.fillRect(startX + i * laneWidth, startY, laneWidth, height);
         }
         
-        ctx.fillStyle = isPressed ? (settings.randomKidMode ? '#A9D3B2' : '#00E8FF') : '#FFFFFF';
-        ctx.fillRect(startX + i * laneWidth, startY + height - 20 * scale, laneWidth, 4);
+        const imgKeyToUse = (isPressed && keyImageD) ? keyImageD : keyImage;
+        const skinImg = imgKeyToUse ? loadedCustomSkinImagesRef.current[`${imgKeyToUse.toLowerCase()}Url`] : null;
+
+        if (skinImg && skinImg.dataset.loaded === 'true') {
+          const imgH = laneWidth * (skinImg.naturalHeight / skinImg.naturalWidth);
+          ctx.drawImage(skinImg, startX + i * laneWidth, startY + height - imgH, laneWidth, imgH);
+        } else {
+          const keyHeight = isPressed ? 8 * scale : 16 * scale;
+          const keyOffset = (16 * scale - keyHeight) / 2;
+          ctx.fillStyle = isPressed ? (settings.randomKidMode ? '#A9D3B2' : laneColor) : '#FFFFFF';
+          ctx.fillRect(startX + i * laneWidth, hitTargetY - 8 * scale + keyOffset, laneWidth, keyHeight);
+          
+          // Add a highlight
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+          ctx.fillRect(startX + i * laneWidth, hitTargetY - 8 * scale + keyOffset, laneWidth, 2 * scale);
+        }
 
         ctx.font = `bold ${14 * scale}px var(--font-sans)`;
         ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
@@ -985,10 +1388,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       // Draw notes
       const fallDuration = approachDuration;
       hitObjectsStateRef.current.forEach((obj) => {
-        // Skip hits and misses
-        if (obj.hitResult !== null) return;
+        // Skip misses, and skip fully completed hits
+        if (obj.hitResult === 0) return;
+        // if it's a normal note and it's hit, skip
+        if (obj.hitResult !== null && !obj.endTime) return;
+        // if it's a hold note and playhead passed its end, skip
+        if (obj.hitResult !== null && obj.endTime && playhead > obj.endTime) return;
         
-        const isVisible = playhead >= obj.time - fallDuration && playhead <= obj.time + hit50Window;
+        const isVisible = playhead >= obj.time - fallDuration && playhead <= (obj.endTime ? obj.endTime + hit50Window : obj.time + hit50Window);
         if (!isVisible) return;
 
         const lane = getManiaLane(obj.x);
@@ -996,14 +1403,69 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const noteY = startY + (height - 20 * scale) * fallRatio;
         const noteHeight = 15 * scale;
 
-        ctx.fillStyle = (lane === 0 || lane === 3) ? (settings.randomKidMode ? '#A9D3B2' : '#00E8FF') : (settings.randomKidMode ? '#7FB89D' : '#33EFFF');
-        ctx.shadowColor = ctx.fillStyle;
-        ctx.shadowBlur = 10;
-        ctx.fillRect(startX + lane * laneWidth + 2, noteY - noteHeight, laneWidth - 4, noteHeight);
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(startX + lane * laneWidth + 2, noteY - noteHeight, laneWidth - 4, noteHeight);
+        let noteColor = (lane === 0 || lane === 3) ? '#00E8FF' : '#33EFFF';
+        let noteImage = '';
+        let holdImage = '';
+        if (settings.skinPreset === 'custom') {
+          if (settings.customSkinColors?.mania?.[4]) {
+            const maniaConf = settings.customSkinColors.mania[4];
+            if (maniaConf.colors?.[`colourlight${lane + 1}`]) {
+              noteColor = maniaConf.colors[`colourlight${lane + 1}`];
+            }
+            noteImage = maniaConf.images?.[`noteimage${lane}`] || '';
+            holdImage = maniaConf.images?.[`noteimage${lane}l`] || '';
+          }
+          if (!noteImage) noteImage = (lane === 0 || lane === 3) ? 'mania-note1' : 'mania-note2';
+          if (!holdImage) holdImage = (lane === 0 || lane === 3) ? 'mania-note1L' : 'mania-note2L';
+        }
+        
+        const finalColor = settings.randomKidMode ? ((lane === 0 || lane === 3) ? '#A9D3B2' : '#7FB89D') : noteColor;
+
+        if (obj.endTime) {
+          const tailRatio = Math.max(0, 1 - (obj.endTime - playhead) / fallDuration);
+          const tailY = startY + (height - 20 * scale) * tailRatio;
+          
+          const holdSkinImg = holdImage ? loadedCustomSkinImagesRef.current[`${holdImage.toLowerCase()}Url`] : null;
+          
+          if (holdSkinImg && holdSkinImg.dataset.loaded === 'true') {
+             ctx.drawImage(holdSkinImg, startX + lane * laneWidth, tailY, laneWidth, noteY - tailY);
+          } else {
+            ctx.fillStyle = finalColor;
+            ctx.globalAlpha = 0.4;
+            // body of the hold note
+            ctx.fillRect(startX + lane * laneWidth + 4, tailY, laneWidth - 8, noteY - tailY);
+            ctx.globalAlpha = 1.0;
+            
+            // top edge of hold note
+            ctx.fillStyle = finalColor;
+            ctx.fillRect(startX + lane * laneWidth + 2, tailY - noteHeight, laneWidth - 4, noteHeight);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.strokeRect(startX + lane * laneWidth + 2, tailY - noteHeight, laneWidth - 4, noteHeight);
+          }
+        }
+
+        const noteSkinImg = noteImage ? loadedCustomSkinImagesRef.current[`${noteImage.toLowerCase()}Url`] : null;
+
+        if (noteSkinImg && noteSkinImg.dataset.loaded === 'true') {
+          const imgH = laneWidth * (noteSkinImg.naturalHeight / noteSkinImg.naturalWidth);
+          ctx.drawImage(noteSkinImg, startX + lane * laneWidth, noteY - imgH, laneWidth, imgH);
+        } else {
+          ctx.fillStyle = finalColor;
+          ctx.shadowColor = ctx.fillStyle;
+          ctx.shadowBlur = 10;
+          ctx.fillRect(startX + lane * laneWidth + 2, noteY - noteHeight, laneWidth - 4, noteHeight);
+          ctx.shadowBlur = 0;
+          
+          // Highlights for 3D look
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+          ctx.fillRect(startX + lane * laneWidth + 2, noteY - noteHeight, laneWidth - 4, 3 * scale);
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+          ctx.fillRect(startX + lane * laneWidth + 2, noteY - 3 * scale, laneWidth - 4, 3 * scale);
+          
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(startX + lane * laneWidth + 2, noteY - noteHeight, laneWidth - 4, noteHeight);
+        }
       });
       
       const activeBursts = burstsRef.current.filter((b) => playhead - b.timestamp <= 300);
@@ -1092,7 +1554,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       if (!isVisible) return;
 
       if (obj.type === 'slider' && obj.sliderPoints && obj.sliderPoints.length >= 2) {
-        const color = comboColors[obj.comboSet];
+        const color = comboColors[obj.comboSet % comboColors.length];
 
         // Choose color for track
         let strokeColor = color;
@@ -1102,11 +1564,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         // Determine slider points configuration based on skin snaking/retraction settings
         let pointsToDraw = obj.sliderPoints;
+        let isFullyExtended = true;
         if (skin !== 'classic') {
           // If in approach stage: snake-in
           if (playhead < obj.time) {
             const ratioProgress = Math.max(0, Math.min(1, (playhead - (obj.time - approachDuration)) / approachDuration));
             pointsToDraw = getSliderPointsBetweenRatios(obj, 0, ratioProgress);
+            if (ratioProgress < 1.0) isFullyExtended = false;
           } else {
             // Sliding stage: retract behind ball (snake-out!)
             const ratioProgress = Math.max(0, Math.min(1, (playhead - obj.time) / (obj.duration || 1)));
@@ -1188,25 +1652,72 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
           } else {
             // Lazer, Classic, Custom standard glow track
-            let trackGlow = strokeColor;
-            if (trackGlow.startsWith('#')) {
-              const hex = trackGlow.replace('#', '');
-              const r = parseInt(hex.substring(0, 2), 16) || 0;
-              const g = parseInt(hex.substring(2, 4), 16) || 0;
-              const b = parseInt(hex.substring(4, 6), 16) || 0;
-              trackGlow = `rgba(${r}, ${g}, ${b}, 0.35)`;
+            if (skin === 'custom') {
+               const border = settings.customSkinColors?.sliderBorderColor || '#ffffff';
+               const track = settings.customSkinColors?.sliderTrackColor || 'rgba(20, 20, 25, 0.9)';
+               ctx.strokeStyle = border;
+               ctx.lineWidth = baseCSSize * scale * 1.25 * renderScale;
+               ctx.stroke();
+
+               ctx.strokeStyle = track;
+               ctx.lineWidth = baseCSSize * scale * 0.95 * renderScale;
+               ctx.stroke();
             } else {
-              trackGlow = strokeColor.replace('rgb', 'rgba').replace(')', ', 0.35)');
+              let trackGlow = strokeColor;
+              if (trackGlow.startsWith('#')) {
+                const hex = trackGlow.replace('#', '');
+                const r = parseInt(hex.substring(0, 2), 16) || 0;
+                const g = parseInt(hex.substring(2, 4), 16) || 0;
+                const b = parseInt(hex.substring(4, 6), 16) || 0;
+                trackGlow = `rgba(${r}, ${g}, ${b}, 0.35)`;
+              } else {
+                trackGlow = strokeColor.replace('rgb', 'rgba').replace(')', ', 0.35)');
+              }
+
+              ctx.strokeStyle = trackGlow;
+              ctx.lineWidth = baseCSSize * scale * 1.3 * renderScale;
+              ctx.stroke();
+
+              ctx.strokeStyle = 'rgba(25, 25, 30, 0.9)';
+              ctx.lineWidth = baseCSSize * scale * 0.95 * renderScale;
+              ctx.stroke();
             }
-
-            ctx.strokeStyle = trackGlow;
-            ctx.lineWidth = baseCSSize * scale * 1.3 * renderScale;
-            ctx.stroke();
-
-            ctx.strokeStyle = 'rgba(25, 25, 30, 0.9)';
-            ctx.lineWidth = baseCSSize * scale * 0.95 * renderScale;
-            ctx.stroke();
           }
+        }
+
+        // Draw Slider Tail hitcircle graphic for custom and yada! skins
+        if ((skin === 'custom' || skin === 'yada!') && obj.sliderPoints && obj.sliderPoints.length > 0 && isFullyExtended) {
+           const tailPt = obj.sliderPoints[obj.sliderPoints.length - 1];
+           const tx = offsetX + tailPt.x * scale;
+           const ty = offsetY + tailPt.y * scale;
+           const customImages = loadedCustomSkinImagesRef.current;
+           const hcImg = customImages['sliderendcircleUrl'] || customImages['hitcircleUrl'];
+           const hcoImg = customImages['sliderendcircleoverlayUrl'] || customImages['hitcircleoverlayUrl'];
+           const radius = (baseCSSize / 2) * scale * renderScale;
+           const diameter = baseCSSize * scale * renderScale;
+           
+           if ((hcImg && hcImg.dataset.loaded === 'true') || (hcoImg && hcoImg.dataset.loaded === 'true')) {
+             ctx.save();
+             ctx.beginPath();
+             ctx.arc(tx, ty, radius, 0, Math.PI * 2);
+             ctx.clip();
+             if (hcImg && hcImg.dataset.loaded === 'true') {
+               const tinted = getTintedCanvas(hcImg, color);
+               if (tinted) {
+                 ctx.drawImage(tinted, tx - radius, ty - radius, diameter, diameter);
+               } else {
+                 ctx.drawImage(hcImg, tx - radius, ty - radius, diameter, diameter);
+               }
+             }
+             if (hcoImg && hcoImg.dataset.loaded === 'true') {
+               ctx.drawImage(hcoImg, tx - radius, ty - radius, diameter, diameter);
+             }
+             ctx.restore();
+           } else {
+              ctx.beginPath(); ctx.arc(tx, ty, radius, 0, Math.PI * 2);
+              ctx.fillStyle = color; ctx.fill();
+              ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4 * scale * renderScale; ctx.stroke();
+           }
         }
 
         // Draw Reverse Arrows
@@ -1226,26 +1737,34 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 ctx.translate(offsetX + rp.x * scale, offsetY + rp.y * scale);
                 ctx.rotate(angle);
                 
-                // Draw a nice arrow! Pulse the arrow slightly
-                const pulse = 1 + 0.1 * Math.sin(Date.now() / 150);
-                ctx.scale(pulse, pulse);
-                
-                ctx.beginPath();
-                ctx.moveTo(10 * scale * renderScale, 0);
-                ctx.lineTo(25 * scale * renderScale, 15 * scale * renderScale);
-                ctx.moveTo(10 * scale * renderScale, 0);
-                ctx.lineTo(25 * scale * renderScale, -15 * scale * renderScale);
-                
-                ctx.moveTo(-10 * scale * renderScale, 0);
-                ctx.lineTo(5 * scale * renderScale, 15 * scale * renderScale);
-                ctx.moveTo(-10 * scale * renderScale, 0);
-                ctx.lineTo(5 * scale * renderScale, -15 * scale * renderScale);
-                
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-                ctx.lineWidth = 6 * scale * renderScale;
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                ctx.stroke();
+                const revImg = loadedCustomSkinImagesRef.current['reversearrowUrl'];
+                if ((skin === 'custom' || skin === 'yada!') && revImg && revImg.dataset.loaded === 'true') {
+                  const pulse = 1 + 0.1 * Math.sin(Date.now() / 150);
+                  ctx.scale(pulse, pulse);
+                  const revSize = baseCSSize * scale * 2 * renderScale;
+                  ctx.drawImage(revImg, -revSize / 2, -revSize / 2, revSize, revSize);
+                } else {
+                  // Draw a nice arrow! Pulse the arrow slightly
+                  const pulse = 1 + 0.1 * Math.sin(Date.now() / 150);
+                  ctx.scale(pulse, pulse);
+                  
+                  ctx.beginPath();
+                  ctx.moveTo(10 * scale * renderScale, 0);
+                  ctx.lineTo(25 * scale * renderScale, 15 * scale * renderScale);
+                  ctx.moveTo(10 * scale * renderScale, 0);
+                  ctx.lineTo(25 * scale * renderScale, -15 * scale * renderScale);
+                  
+                  ctx.moveTo(-10 * scale * renderScale, 0);
+                  ctx.lineTo(5 * scale * renderScale, 15 * scale * renderScale);
+                  ctx.moveTo(-10 * scale * renderScale, 0);
+                  ctx.lineTo(5 * scale * renderScale, -15 * scale * renderScale);
+                  
+                  ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+                  ctx.lineWidth = 6 * scale * renderScale;
+                  ctx.lineCap = 'round';
+                  ctx.lineJoin = 'round';
+                  ctx.stroke();
+                }
                 
                 ctx.restore();
               }
@@ -1280,6 +1799,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               ctx.beginPath();
               ctx.arc(offsetX + pos.x * scale, offsetY + pos.y * scale, (baseCSSize * 0.25) * scale * renderScale, 0, Math.PI * 2);
               ctx.fillStyle = strokeColor;
+              ctx.fill();
+
+            } else if ((skin === 'custom' || skin === 'yada!') && loadedCustomSkinImagesRef.current['sliderbUrl'] && loadedCustomSkinImagesRef.current['sliderbUrl'].dataset.loaded === 'true') {
+              const sbImg = loadedCustomSkinImagesRef.current['sliderbUrl'];
+              const sbSize = (baseCSSize * 2) * scale * renderScale;
+              ctx.drawImage(sbImg, offsetX + pos.x * scale - sbSize / 2, offsetY + pos.y * scale - sbSize / 2, sbSize, sbSize);
+              
+              const sfcImg = loadedCustomSkinImagesRef.current['sliderfollowcircleUrl'];
+              if (sfcImg && sfcImg.dataset.loaded === 'true') {
+                 const sfcSize = sbSize * 1.5;
+                 ctx.drawImage(sfcImg, offsetX + pos.x * scale - sfcSize / 2, offsetY + pos.y * scale - sfcSize / 2, sfcSize, sfcSize);
+              }
+            } else if (skin === 'yada!') {
+              // osu! Lazer 2018 styled Slider Ball:
+              // Beautiful bright glowing white inner core + colored surrounding tracking circle!
+              // 1. Surrounding colored tracking circle
+              ctx.beginPath();
+              ctx.arc(offsetX + pos.x * scale, offsetY + pos.y * scale, (baseCSSize * 1.1) * scale * renderScale, 0, Math.PI * 2);
+              ctx.strokeStyle = strokeColor;
+              ctx.lineWidth = 2 * renderScale;
+              ctx.stroke();
+
+              // 2. Thick glowing semi-transparent body
+              ctx.beginPath();
+              ctx.arc(offsetX + pos.x * scale, offsetY + pos.y * scale, (baseCSSize * 0.75) * scale * renderScale, 0, Math.PI * 2);
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 3 * renderScale;
+              ctx.fill();
+              ctx.stroke();
+
+              // 3. Compact glowing inner white core
+              ctx.beginPath();
+              ctx.arc(offsetX + pos.x * scale, offsetY + pos.y * scale, (baseCSSize * 0.4) * scale * renderScale, 0, Math.PI * 2);
+              ctx.fillStyle = '#ffffff';
               ctx.fill();
 
             } else if (skin === 'whitecat') {
@@ -1333,7 +1887,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       .reverse(); // Reverse so older items draw last (on top)
 
     objectsToDraw.forEach((obj) => {
-      const color = comboColors[obj.comboSet];
+      const color = comboColors[obj.comboSet % comboColors.length];
       const diameter = baseCSSize * scale * drawScale;
       const radius = diameter / 2;
       const x = offsetX + obj.x * scale;
@@ -1429,6 +1983,57 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.fillStyle = 'rgba(0, 229, 255, 0.7)';
         ctx.fill();
 
+      } else if (skin === 'yada!') {
+        const customImages = loadedCustomSkinImagesRef.current;
+        let drawnCustom = false;
+        
+        const hcImg = customImages['hitcircleUrl'];
+        const hcoImg = customImages['hitcircleoverlayUrl'];
+        
+        if ((hcImg && hcImg.dataset.loaded === 'true') || (hcoImg && hcoImg.dataset.loaded === 'true')) {
+          drawnCustom = true;
+          if (hcImg && hcImg.dataset.loaded === 'true') {
+            const tinted = getTintedCanvas(hcImg, color);
+            if (tinted) {
+              ctx.drawImage(tinted, x - radius, y - radius, diameter, diameter);
+            } else {
+              ctx.drawImage(hcImg, x - radius, y - radius, diameter, diameter);
+            }
+          }
+          if (hcoImg && hcoImg.dataset.loaded === 'true') {
+            ctx.drawImage(hcoImg, x - radius, y - radius, diameter, diameter);
+          }
+        }
+        
+        if (!drawnCustom) {
+          // osu! Lazer 2018 skin (by DP05) high fidelity drawing:
+          // A beautiful, semi-transparent deep dark background with subtle combo tint
+          ctx.beginPath();
+          ctx.arc(x, y, radius - 1.5 * scale * drawScale, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(12, 12, 18, 0.82)';
+          ctx.fill();
+
+          // Smooth inner ring filled with a glowing solid combo color tint
+          ctx.beginPath();
+          ctx.arc(x, y, radius - 3.5 * scale * drawScale, 0, Math.PI * 2);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 4 * scale * drawScale;
+          ctx.stroke();
+
+          // Bright crisp pure white outer frame ring
+          ctx.beginPath();
+          ctx.arc(x, y, radius - 0.5 * scale * drawScale, 0, Math.PI * 2);
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.8 * scale * drawScale;
+          ctx.stroke();
+
+          // Subtle soft white micro center overlay dot
+          ctx.beginPath();
+          ctx.arc(x, y, radius * 0.15, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+          ctx.fill();
+        }
+
       } else if (skin === 'lazer') {
         // Inner transparent dark backing
         ctx.beginPath();
@@ -1456,19 +2061,38 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.lineWidth = 1 * scale * drawScale;
         ctx.stroke();
 
-      } else if (skin === 'custom' && settings.customSkinColors) {
-        const fill = settings.customSkinColors.hitcircleFill || '#3b82f6';
-        const border = settings.customSkinColors.hitcircleBorder || '#ffffff';
+      } else if (skin === 'custom') {
+        const customImages = loadedCustomSkinImagesRef.current;
+        let drawnCustom = false;
+        
+        const hcImg = customImages['hitcircleUrl'];
+        const hcoImg = customImages['hitcircleoverlayUrl'];
+        
+        if ((hcImg && hcImg.dataset.loaded === 'true') || (hcoImg && hcoImg.dataset.loaded === 'true')) {
+          drawnCustom = true;
+          if (hcImg && hcImg.dataset.loaded === 'true') {
+            const tinted = getTintedCanvas(hcImg, color);
+            if (tinted) {
+              ctx.drawImage(tinted, x - radius, y - radius, diameter, diameter);
+            } else {
+              ctx.drawImage(hcImg, x - radius, y - radius, diameter, diameter);
+            }
+          }
+          if (hcoImg && hcoImg.dataset.loaded === 'true') {
+            ctx.drawImage(hcoImg, x - radius, y - radius, diameter, diameter);
+          }
+        }
+        
+        if (!drawnCustom) {
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
 
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = fill;
-        ctx.fill();
-
-        ctx.strokeStyle = border;
-        ctx.lineWidth = 4 * scale * drawScale;
-        ctx.stroke();
-
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 4 * scale * drawScale;
+          ctx.stroke();
+        }
       } else {
         // Classic style
         ctx.beginPath();
@@ -1502,17 +2126,62 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(obj.comboIndex.toString(), x, y);
-      } else {
-        // Lazer / Classic / Custom
-        if (skin === 'custom' && settings.customSkinColors?.textColor) {
-          ctx.fillStyle = settings.customSkinColors.textColor;
-        } else {
-          ctx.fillStyle = '#ffffff';
-        }
-        ctx.font = `bold ${Math.floor(radius * 0.95)}px var(--font-sans)`;
+      } else if (skin === 'yada!') {
+        // Beautiful clean, bold, medium-sized, high-readability numbers
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${Math.floor(radius * 0.68)}px var(--font-sans)`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(obj.comboIndex.toString(), x, y);
+      } else {
+        // Lazer / Classic / Custom
+        let drawnNumberImages = false;
+        if (skin === 'custom') {
+          const customImages = loadedCustomSkinImagesRef.current;
+          const str = obj.comboIndex.toString();
+          let hasAll = true;
+          for (const char of str) {
+            if (!customImages[`default-${char}Url`] || customImages[`default-${char}Url`].dataset.loaded !== 'true') {
+              hasAll = false;
+              break;
+            }
+          }
+          if (hasAll) {
+            drawnNumberImages = true;
+            let totalW = 0;
+            const imgs = [];
+            // Target height scales with circle radius
+            const targetH = radius * 1.35;
+            for (const char of str) {
+              const img = customImages[`default-${char}Url`];
+              const ratio = img.naturalWidth / img.naturalHeight;
+              const targetW = targetH * ratio;
+              totalW += targetW;
+              imgs.push({ img, targetW, targetH });
+            }
+            // Add slight overlapping/kerning typical of osu! numbers
+            const kerning = radius * -0.05;
+            totalW += kerning * (imgs.length - 1);
+            
+            let currX = x - totalW / 2;
+            for (const data of imgs) {
+              ctx.drawImage(data.img, currX, y - data.targetH / 2, data.targetW, data.targetH);
+              currX += data.targetW + kerning;
+            }
+          }
+        }
+        
+        if (!drawnNumberImages) {
+          if (skin === 'custom' && settings.customSkinColors?.textColor) {
+            ctx.fillStyle = settings.customSkinColors.textColor;
+          } else {
+            ctx.fillStyle = '#ffffff';
+          }
+          ctx.font = `bold ${Math.floor(radius * 0.95)}px var(--font-sans)`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(obj.comboIndex.toString(), x, y);
+        }
       }
 
       // 2. Draw outer shrinking Approach Circle (only before hits)
@@ -1523,20 +2192,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const approachSizeMultiplier = 1.0 + approachRatio * 2.5; 
         const approachRadius = radius * approachSizeMultiplier;
 
-        ctx.beginPath();
-        ctx.arc(x, y, approachRadius, 0, Math.PI * 2);
+        const aprImg = loadedCustomSkinImagesRef.current['approachcircleUrl'];
+        if ((skin === 'custom' || skin === 'yada!') && aprImg && aprImg.dataset.loaded === 'true') {
+          const tintedApr = getTintedCanvas(aprImg, color);
+          const aprDiameter = approachRadius * 2;
+          if (tintedApr) {
+            ctx.drawImage(tintedApr, x - approachRadius, y - approachRadius, aprDiameter, aprDiameter);
+          } else {
+            ctx.drawImage(aprImg, x - approachRadius, y - approachRadius, aprDiameter, aprDiameter);
+          }
+        } else {
+          ctx.beginPath();
+          ctx.arc(x, y, approachRadius, 0, Math.PI * 2);
 
-        let aprColor = color;
-        if (skin === 'custom' && settings.customSkinColors?.approachCircleColor) {
-          aprColor = settings.customSkinColors.approachCircleColor;
-        } else if (skin === 'whitecat') {
-          aprColor = 'rgba(0, 229, 255, 0.85)'; // White Cat signature cyan approach circles
-        } else if (skin === 'argon') {
-          aprColor = color; // Matches Argon's glowing accents
+          let aprColor = color;
+          if (skin === 'whitecat') {
+            aprColor = 'rgba(0, 229, 255, 0.85)'; // White Cat signature cyan approach circles
+          } else if (skin === 'argon' || skin === 'yada!') {
+            aprColor = color; // Matches glowing accents
+          }
+          ctx.strokeStyle = aprColor;
+          ctx.lineWidth = (skin === 'lazer' || skin === 'yada!' || skin === 'argon' || skin === 'whitecat' ? 1.5 : 2.5) * scale * drawScale;
+          ctx.stroke();
         }
-        ctx.strokeStyle = aprColor;
-        ctx.lineWidth = (skin === 'lazer' || skin === 'argon' || skin === 'whitecat' ? 1.5 : 2.5) * scale * drawScale;
-        ctx.stroke();
       }
     });
 
@@ -1563,26 +2241,42 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const fy = offsetY + f.y * scale - dy;
 
       ctx.save();
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
+      ctx.globalAlpha = opacity;
+      
+      let imgKey = '';
+      if (f.result === 300) imgKey = 'hit300Url';
+      else if (f.result === 100) imgKey = 'hit100Url';
+      else if (f.result === 50) imgKey = 'hit50Url';
+      else imgKey = 'hit0Url';
 
-      if (f.result === 300) {
-        ctx.fillStyle = `rgba(34, 197, 94, ${opacity})`;
-        ctx.font = `bold ${Math.floor(28 * drawScale)}px var(--font-sans)`;
-        ctx.fillText('300', fx, fy);
-      } else if (f.result === 100) {
-        ctx.fillStyle = `rgba(59, 130, 246, ${opacity})`;
-        ctx.font = `bold ${Math.floor(24 * drawScale)}px var(--font-sans)`;
-        ctx.fillText('100', fx, fy);
-      } else if (f.result === 50) {
-        ctx.fillStyle = `rgba(234, 179, 8, ${opacity})`;
-        ctx.font = `bold ${Math.floor(20 * drawScale)}px var(--font-sans)`;
-        ctx.fillText('50', fx, fy);
+      const img = loadedCustomSkinImagesRef.current[imgKey];
+      if ((skin === 'custom' || skin === 'yada!') && img && img.dataset.loaded === 'true') {
+         // Draw custom image centered
+         const ratio = img.naturalWidth / img.naturalHeight;
+         const th = 15 * drawScale;
+         const tw = th * ratio;
+         ctx.drawImage(img, fx - tw / 2, fy - th / 2, tw, th);
       } else {
-        // Miss! Render a nice red cross
-        ctx.fillStyle = `rgba(239, 68, 68, ${opacity})`;
-        ctx.font = `bold ${Math.floor(26 * drawScale)}px var(--font-sans)`;
-        ctx.fillText('✕', fx, fy);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        if (f.result === 300) {
+          ctx.fillStyle = `rgba(34, 197, 94, 1)`;
+          ctx.font = `bold ${Math.floor(28 * drawScale)}px var(--font-sans)`;
+          ctx.fillText('300', fx, fy);
+        } else if (f.result === 100) {
+          ctx.fillStyle = `rgba(59, 130, 246, 1)`;
+          ctx.font = `bold ${Math.floor(24 * drawScale)}px var(--font-sans)`;
+          ctx.fillText('100', fx, fy);
+        } else if (f.result === 50) {
+          ctx.fillStyle = `rgba(234, 179, 8, 1)`;
+          ctx.font = `bold ${Math.floor(20 * drawScale)}px var(--font-sans)`;
+          ctx.fillText('50', fx, fy);
+        } else {
+          // Miss! Render a nice red cross
+          ctx.fillStyle = `rgba(239, 68, 68, 1)`;
+          ctx.font = `bold ${Math.floor(26 * drawScale)}px var(--font-sans)`;
+          ctx.fillText('✕', fx, fy);
+        }
       }
       ctx.restore();
     });
@@ -1698,32 +2392,64 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       
       const isPressing = activeDesktopKeysRef.current.k1 || activeDesktopKeysRef.current.k2 || activeDesktopKeysRef.current.m1 || activeDesktopKeysRef.current.m2;
       
-      ctx.beginPath();
-      const outerRadius = isPressing ? 18 : 14;
-      ctx.arc(mx, my, outerRadius, 0, Math.PI * 2);
-      ctx.fillStyle = isPressing ? 'rgba(0, 232, 255, 0.2)' : 'rgba(255, 101, 169, 0.15)';
-      ctx.fill();
-      ctx.strokeStyle = isPressing ? 'rgba(0, 232, 255, 0.8)' : 'rgba(255, 101, 169, 0.7)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      
-      const tickLen = 5;
-      const tickGap = 5;
-      ctx.strokeStyle = isPressing ? 'rgba(0, 232, 255, 0.5)' : 'rgba(255, 101, 169, 0.4)';
-      ctx.lineWidth = 1.5;
-      
-      ctx.beginPath(); ctx.moveTo(mx, my - outerRadius - tickGap); ctx.lineTo(mx, my - outerRadius - tickGap - tickLen); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(mx, my + outerRadius + tickGap); ctx.lineTo(mx, my + outerRadius + tickGap + tickLen); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(mx - outerRadius - tickGap, my); ctx.lineTo(mx - outerRadius - tickGap - tickLen, my); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(mx + outerRadius + tickGap, my); ctx.lineTo(mx + outerRadius + tickGap + tickLen, my); ctx.stroke();
+      if ((skin === 'custom' || skin === 'yada!') && loadedCustomSkinImagesRef.current['cursorUrl'] && loadedCustomSkinImagesRef.current['cursorUrl'].dataset.loaded === 'true') {
+        const cursorImg = loadedCustomSkinImagesRef.current['cursorUrl'];
+        const cSize = (isPressing ? 48 : 44) * (h / 1080); 
+        ctx.drawImage(cursorImg, mx - cSize / 2, my - cSize / 2, cSize, cSize);
+      } else if (skin === 'yada!') {
+        // osu! Lazer 2018 custom cursor replica (glowing magenta/pink outer shield, white crisp center core)
+        const outerRadius = isPressing ? 18 : 14;
+        
+        // 1. Glowing semi-transparent magenta aura
+        ctx.beginPath();
+        ctx.arc(mx, my, outerRadius * 1.3, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 101, 169, 0.25)';
+        ctx.fill();
 
-      ctx.beginPath();
-      ctx.arc(mx, my, 5, 0, Math.PI * 2);
-      ctx.fillStyle = '#ffffff';
-      ctx.fill();
-      ctx.strokeStyle = isPressing ? '#00E8FF' : '#FF65A9';
-      ctx.lineWidth = 1;
-      ctx.stroke();
+        // 2. Crisp solid outer neon border
+        ctx.beginPath();
+        ctx.arc(mx, my, outerRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ff65a9';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        // 3. Crisp white center dot
+        ctx.beginPath();
+        ctx.arc(mx, my, 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.strokeStyle = '#ff65a9';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+      } else {
+        ctx.beginPath();
+        const outerRadius = isPressing ? 18 : 14;
+        ctx.arc(mx, my, outerRadius, 0, Math.PI * 2);
+        ctx.fillStyle = isPressing ? 'rgba(0, 232, 255, 0.2)' : 'rgba(255, 101, 169, 0.15)';
+        ctx.fill();
+        ctx.strokeStyle = isPressing ? 'rgba(0, 232, 255, 0.8)' : 'rgba(255, 101, 169, 0.7)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        const tickLen = 5;
+        const tickGap = 5;
+        ctx.strokeStyle = isPressing ? 'rgba(0, 232, 255, 0.5)' : 'rgba(255, 101, 169, 0.4)';
+        ctx.lineWidth = 1.5;
+        
+        ctx.beginPath(); ctx.moveTo(mx, my - outerRadius - tickGap); ctx.lineTo(mx, my - outerRadius - tickGap - tickLen); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(mx, my + outerRadius + tickGap); ctx.lineTo(mx, my + outerRadius + tickGap + tickLen); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(mx - outerRadius - tickGap, my); ctx.lineTo(mx - outerRadius - tickGap - tickLen, my); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(mx + outerRadius + tickGap, my); ctx.lineTo(mx + outerRadius + tickGap + tickLen, my); ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(mx, my, 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.strokeStyle = isPressing ? '#00E8FF' : '#FF65A9';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
       
       ctx.restore();
     }
@@ -1731,11 +2457,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   // Compute live play accuracy percentage
   const getAccuracy = () => {
-    const totalHits = stats.hits300 + stats.hits100 + stats.hits50 + stats.misses;
+    const s = statsRef.current;
+    const totalHits = s.hits300 + s.hits100 + s.hits50 + s.misses;
     if (totalHits === 0) return 100;
     
     const possibleMax = totalHits * 300;
-    const actual = stats.hits300 * 300 + stats.hits100 * 100 + stats.hits50 * 50;
+    const actual = s.hits300 * 300 + s.hits100 * 100 + s.hits50 * 50;
     return parseFloat(((actual / possibleMax) * 100).toFixed(2));
   };
 
@@ -1749,7 +2476,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   // Formatting for osu!lazer leading score aesthetics
   const renderFormattedScore = () => {
-    const scoreStr = stats.score.toString().padStart(8, '0');
+    const scoreStr = statsRef.current.score.toString().padStart(8, '0');
     const firstNonZero = scoreStr.search(/[1-9]/);
     if (firstNonZero === -1) {
       return <span className="font-mono text-xl md:text-2xl text-white/30 font-extrabold tracking-wider">{scoreStr}</span>;
@@ -1778,65 +2505,72 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
       `}</style>
 
-      {/* Laser HP Bar spanning the absolute top width of the screen */}
-      <div className="absolute top-0 left-0 right-0 h-1.5 bg-black/45 z-30">
-        <div 
-          className={`h-full transition-all duration-75 shadow-[0_0_10px_rgba(0,232,255,0.8)] ${
-            stats.hp < 30 
-              ? 'bg-gradient-to-r from-red-500 to-rose-600 shadow-[0_0_14px_rgba(239,68,68,0.95)] animate-pulse' 
-              : 'bg-gradient-to-r from-[#00CFFF] via-[#00E8FF] to-[#33EFFF]'
-          }`}
-          style={{ width: `${stats.hp}%` }}
-        />
-      </div>
-
-      {/* Top Hud Bar */}
-      <div className="h-16 border-b border-white/[0.05] bg-[#121216] flex items-center justify-between px-6 z-10 animate-fade-in relative shadow-[0_4px_25px_rgba(0,0,0,0.4)]">
-        
-        {spectatingReplayName && (
-          <div className="absolute left-1/2 -translate-x-1/2 z-20 bg-[#00E8FF]/10 border border-[#00E8FF]/20 text-[#00E8FF] px-4 py-1 rounded-full font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-[0_0_15px_rgba(0,232,255,0.2)] backdrop-blur-sm">
-            <span className="w-2 h-2 rounded-full bg-[#00E8FF] animate-pulse" />
-            <span>SPECTATING REPLAY: {spectatingReplayName}</span>
-          </div>
-        )}
-
-        {/* Info & Exit Button */}
-        <div className="flex items-center gap-4">
-          <button 
-            id="btn-quit-game"
-            onClick={() => {
-              cleanupAudio();
-              handleClose();
-            }}
-            className="flex items-center gap-2 px-3.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-sm text-xs text-gray-200 font-extrabold uppercase tracking-wider transition-all cursor-pointer hover:border-[#00E8FF]/30"
-          >
-            <X className="w-4 h-4 text-[#00E8FF]" />
-            <span>Beenden</span>
-          </button>
-          
-          <div className="hidden lg:block border-l border-white/10 pl-4">
-            <h1 className="text-xs font-black tracking-widest leading-none text-[#00E8FF] uppercase">SPIELT GERADE</h1>
-            <h2 className="text-sm font-bold tracking-tight text-white mt-1 line-clamp-1">{beatmap.title} <span className="opacity-50 text-xs font-medium">[{beatmap.version}]</span></h2>
-          </div>
-        </div>
-
-        {/* Live Score stats */}
-        <div className="flex items-center gap-10">
-          
-          {/* Accuracy Tickers */}
-          <div className="text-right">
-            <div className="text-[9px] font-black font-mono text-gray-500 tracking-widest uppercase">ACCURACY</div>
-            <div className="text-lg md:text-xl font-black font-mono text-cyan-400 mt-0.5 tracking-tight">{getAccuracy()}%</div>
+      {!settings.useFullSkin && (
+        <>
+          {/* Laser HP Bar spanning the absolute top width of the screen */}
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-black/45 z-30">
+            <div 
+              id="hud-hp-bar"
+              className={`h-full transition-all duration-75 shadow-[0_0_10px_rgba(0,232,255,0.8)] ${
+                statsRef.current.hp < 30 
+                  ? 'bg-gradient-to-r from-red-500 to-rose-600 shadow-[0_0_14px_rgba(239,68,68,0.95)] animate-pulse' 
+                  : 'bg-gradient-to-r from-[#00CFFF] via-[#00E8FF] to-[#33EFFF]'
+              }`}
+              style={{ width: `${statsRef.current.hp}%` }}
+            />
           </div>
 
-          {/* Leading Score Display Column */}
-          <div className="text-right min-w-[120px]">
-            <div className="text-[9px] font-black font-mono text-gray-500 tracking-widest uppercase mb-0.5">SCORE</div>
-            {renderFormattedScore()}
-          </div>
+          {/* Top Hud Bar */}
+          <div className="h-16 border-b border-white/[0.05] bg-[#121216] flex items-center justify-between px-6 z-10 animate-fade-in relative shadow-[0_4px_25px_rgba(0,0,0,0.4)]">
+            
+            {spectatingReplayName && (
+              <div className="absolute left-1/2 -translate-x-1/2 z-20 bg-[#00E8FF]/10 border border-[#00E8FF]/20 text-[#00E8FF] px-4 py-1 rounded-full font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-[0_0_15px_rgba(0,232,255,0.2)] backdrop-blur-sm">
+                <span className="w-2 h-2 rounded-full bg-[#00E8FF] animate-pulse" />
+                <span>SPECTATING REPLAY: {spectatingReplayName}</span>
+              </div>
+            )}
 
-        </div>
-      </div>
+            {/* Info & Exit Button */}
+            <div className="flex items-center gap-4">
+              <button 
+                id="btn-quit-game"
+                onClick={() => {
+                  cleanupAudio();
+                  handleClose();
+                }}
+                className="flex items-center gap-2 px-3.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-sm text-xs text-gray-200 font-extrabold uppercase tracking-wider transition-all cursor-pointer hover:border-[#00E8FF]/30"
+              >
+                <X className="w-4 h-4 text-[#00E8FF]" />
+                <span>Beenden</span>
+              </button>
+              
+              <div className="hidden lg:block border-l border-white/10 pl-4">
+                <h1 className="text-xs font-black tracking-widest leading-none text-[#00E8FF] uppercase">SPIELT GERADE</h1>
+                <h2 className="text-sm font-bold tracking-tight text-white mt-1 line-clamp-1">{beatmap.title} <span className="opacity-50 text-xs font-medium">[{beatmap.version}]</span></h2>
+              </div>
+            </div>
+
+            {/* Live Score stats */}
+            <div className="flex items-center gap-10">
+              
+              {/* Accuracy Tickers */}
+              <div className="text-right">
+                <div className="text-[9px] font-black font-mono text-gray-500 tracking-widest uppercase">ACCURACY</div>
+                <div id="hud-accuracy" className="text-lg md:text-xl font-black font-mono text-cyan-400 mt-0.5 tracking-tight">{getAccuracy()}%</div>
+              </div>
+
+              {/* Leading Score Display Column */}
+              <div className="text-right min-w-[120px]">
+                <div className="text-[9px] font-black font-mono text-gray-500 tracking-widest uppercase mb-0.5">SCORE</div>
+                <div id="hud-score">
+                  {renderFormattedScore()}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Gameplay Canvas Container */}
       <div 
@@ -1845,15 +2579,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       >
         
         {/* Giant bottom-left combo counter overlay matching osu!lazer */}
-        <div className="absolute bottom-6 left-8 pointer-events-none z-25 select-none font-sans">
-          <div className="flex flex-col items-start bg-black/25 backdrop-blur-sm p-4 rounded-sm border border-white/5">
-            <span className="text-[9px] font-black font-mono tracking-widest text-[#FF65A9] uppercase leading-none">COMBO</span>
-            <div key={stats.combo} className="text-5xl md:text-6xl font-black italic tracking-tighter text-[#FF65A9] drop-shadow-[0_2px_12px_rgba(0,232,255,0.6)] animate-combo-pop select-none leading-none mt-1.5">
-              {stats.combo}<span className="text-2xl font-black not-italic ml-1">x</span>
+        {!settings.useFullSkin && (
+          <div className="absolute bottom-6 left-8 pointer-events-none z-25 select-none font-sans">
+            <div className="flex flex-col items-start bg-black/25 backdrop-blur-sm p-4 rounded-sm border border-white/5">
+              <span className="text-[9px] font-black font-mono tracking-widest text-[#FF65A9] uppercase leading-none">COMBO</span>
+              <div id="hud-combo-container" className="text-5xl md:text-6xl font-black italic tracking-tighter text-[#FF65A9] drop-shadow-[0_2px_12px_rgba(0,232,255,0.6)] animate-combo-pop select-none leading-none mt-1.5">
+                <span id="hud-combo-text">{statsRef.current.combo}<span className="text-2xl font-black not-italic ml-1">x</span></span>
+              </div>
+              <div id="hud-max-combo" className="text-[9px] font-bold text-white/40 mt-1 uppercase font-mono tracking-wider">MAX: {statsRef.current.maxCombo}x</div>
             </div>
-            <div className="text-[9px] font-bold text-white/40 mt-1 uppercase font-mono tracking-wider">MAX: {stats.maxCombo}x</div>
           </div>
-        </div>
+        )}
         
         {/* Background Video or Image Behind under dims */}
         {beatmap.videoUrl ? (
@@ -1889,6 +2625,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         <canvas 
           id="osu-gameplay-canvas"
           ref={canvasRef} 
+          onTouchStart={(e) => {
+            if (e.touches.length === 3) {
+              setIsPausedMenuOpen(prev => !prev);
+              handleTogglePlay();
+            }
+          }}
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}
           onPointerLeave={() => {
@@ -1973,59 +2715,116 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       )}
 
       {/* Bottom control play panel */}
-      <div className="h-14 border-t border-white/[0.08] bg-[#0D0D10] flex items-center justify-between px-6 z-10 text-xs text-gray-400 font-mono">
-        <div className="flex items-center gap-2">
-          <span>STEUERUNG:</span>
-          {settings.gameMode === 'mania' ? (
-            <span className="px-2 py-0.5 bg-[#00E8FF]/10 border border-[#00E8FF]/25 rounded text-[#00E8FF] text-[10px] font-bold">MANIA MODUS ({settings.maniaMobileMode ? 'TOUCH BUTTONS' : 'D / F / J / K'})</span>
-          ) : settings.disableClicking ? (
-            <>
-              <span className="px-2 py-0.5 bg-red-500/15 border border-red-500/35 rounded text-red-400 text-[10px] uppercase font-bold tracking-wider">Klicks deaktiviert</span>
-              <span>– Nur</span>
-              <span className="px-2 py-0.5 bg-[#00E8FF]/10 border border-[#00E8FF]/25 rounded text-[#00E8FF] text-[10px] font-bold animate-[pulse_1.5s_infinite]">Maus + Tastatur (X / Y / Z)</span>
-            </>
-          ) : (
-            <>
-              <span className="px-2 py-0.5 bg-white/5 rounded text-white text-[10px]">Tippen auf Kreise</span>
-              {settings.useKeyboard && (
-                <>
-                  <span>oder</span>
-                  <span className="px-2 py-0.5 bg-white/5 rounded text-white text-[10px]">Tastatur (X / Y / Z Tasten)</span>
-                </>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="flex items-center gap-4">
-          <button 
-            id="btn-pause-toggle"
-            onClick={handleTogglePlay}
-            className="flex items-center gap-1.5 px-3 py-1 bg-[#16161C] hover:bg-[#1f1f26] text-gray-300 rounded-sm border border-white/10 transition-colors cursor-pointer"
-          >
-            {isPlayingState ? (
+      {!settings.useFullSkin && (
+        <div className="h-14 border-t border-white/[0.08] bg-[#0D0D10] flex items-center justify-between px-6 z-10 text-xs text-gray-400 font-mono">
+          <div className="flex items-center gap-2">
+            <span>STEUERUNG:</span>
+            {settings.gameMode === 'mania' ? (
+              <span className="px-2 py-0.5 bg-[#00E8FF]/10 border border-[#00E8FF]/25 rounded text-[#00E8FF] text-[10px] font-bold">MANIA MODUS ({settings.maniaMobileMode ? 'TOUCH BUTTONS' : 'D / F / J / K'})</span>
+            ) : settings.disableClicking ? (
               <>
-                <Pause className="w-3 h-3 text-[#00E8FF]" />
-                <span>Pausieren</span>
+                <span className="px-2 py-0.5 bg-red-500/15 border border-red-500/35 rounded text-red-400 text-[10px] uppercase font-bold tracking-wider">Klicks deaktiviert</span>
+                <span>– Nur</span>
+                <span className="px-2 py-0.5 bg-[#00E8FF]/10 border border-[#00E8FF]/25 rounded text-[#00E8FF] text-[10px] font-bold animate-[pulse_1.5s_infinite]">Maus + Tastatur (X / Y / Z)</span>
               </>
             ) : (
               <>
-                <Play className="w-3 h-3 text-[#00E8FF] fill-[#00E8FF]" />
-                <span>Fortsetzen</span>
+                <span className="px-2 py-0.5 bg-white/5 rounded text-white text-[10px]">Tippen auf Kreise</span>
+                {settings.useKeyboard && (
+                  <>
+                    <span>oder</span>
+                    <span className="px-2 py-0.5 bg-white/5 rounded text-white text-[10px]">Tastatur (X / Y / Z Tasten)</span>
+                  </>
+                )}
               </>
             )}
-          </button>
-          
-          <button 
-            id="btn-restart-game"
-            onClick={handleRestart}
-            className="flex items-center gap-1.5 px-3 py-1 bg-[#16161C] hover:bg-[#1f1f26] text-gray-300 rounded-sm border border-white/10 transition-colors cursor-pointer"
-          >
-            <RotateCcw className="w-3 h-3 text-cyan-400" />
-            <span>Neustart</span>
-          </button>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button 
+              id="btn-pause-toggle"
+              onClick={handleTogglePlay}
+              className="flex items-center gap-1.5 px-3 py-1 bg-[#16161C] hover:bg-[#1f1f26] text-gray-300 rounded-sm border border-white/10 transition-colors cursor-pointer"
+            >
+              {isPlayingState ? (
+                <>
+                  <Pause className="w-3 h-3 text-[#00E8FF]" />
+                  <span>Pausieren</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-3 h-3 text-[#00E8FF] fill-[#00E8FF]" />
+                  <span>Fortsetzen</span>
+                </>
+              )}
+            </button>
+            
+            <button 
+              id="btn-restart-game"
+              onClick={handleRestart}
+              className="flex items-center gap-1.5 px-3 py-1 bg-[#16161C] hover:bg-[#1f1f26] text-gray-300 rounded-sm border border-white/10 transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3 text-cyan-400" />
+              <span>Neustart</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Pause Menu Overlay */}
+      {settings.useFullSkin && isPausedMenuOpen && (
+        <div 
+          className="absolute inset-0 bg-black/60 z-50 flex flex-col items-center justify-center"
+          style={{
+            backgroundImage: settings.customSkinImages?.['pause-overlayUrl'] ? `url(${settings.customSkinImages['pause-overlayUrl']})` : undefined,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center'
+          }}
+        >
+          <div className="flex flex-col gap-4 items-center justify-center">
+            <button
+              onClick={() => {
+                setIsPausedMenuOpen(false);
+                if (!isPlayingState) handleTogglePlay();
+              }}
+              className="active:scale-95 transition-all cursor-pointer bg-transparent border-none outline-none p-0 flex items-center justify-center hover:brightness-110"
+            >
+              {settings.customSkinImages?.['pause-continueUrl'] ? (
+                <img src={settings.customSkinImages['pause-continueUrl']} alt="Continue" className="h-12 md:h-16 lg:h-20 object-contain drop-shadow-md" />
+              ) : (
+                <div className="w-48 py-4 bg-white/10 hover:bg-white/20 rounded-sm border border-white/20 text-white font-bold tracking-widest uppercase text-center">Continue</div>
+              )}
+            </button>
+            <button
+              onClick={() => {
+                setIsPausedMenuOpen(false);
+                handleRestart();
+              }}
+              className="active:scale-95 transition-all cursor-pointer bg-transparent border-none outline-none p-0 flex items-center justify-center hover:brightness-110"
+            >
+              {settings.customSkinImages?.['pause-retryUrl'] ? (
+                <img src={settings.customSkinImages['pause-retryUrl']} alt="Retry" className="h-12 md:h-16 lg:h-20 object-contain drop-shadow-md" />
+              ) : (
+                <div className="w-48 py-4 bg-white/10 hover:bg-[#00E8FF]/40 rounded-sm border border-white/20 text-[#00E8FF] hover:text-white font-bold tracking-widest uppercase text-center shadow-[0_0_15px_rgba(0,232,255,0.1)]">Retry</div>
+              )}
+            </button>
+            <button
+              onClick={() => {
+                setIsPausedMenuOpen(false);
+                cleanupAudio();
+                handleClose();
+              }}
+              className="active:scale-95 transition-all cursor-pointer bg-transparent border-none outline-none p-0 flex items-center justify-center hover:brightness-110"
+            >
+              {settings.customSkinImages?.['pause-backUrl'] ? (
+                <img src={settings.customSkinImages['pause-backUrl']} alt="Quit" className="h-12 md:h-16 lg:h-20 object-contain drop-shadow-md" />
+              ) : (
+                <div className="w-48 py-4 bg-white/10 hover:bg-red-500/40 rounded-sm border border-white/20 text-red-400 hover:text-white font-bold tracking-widest uppercase text-center shadow-[0_0_15px_rgba(239,68,68,0.1)]">Quit</div>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
