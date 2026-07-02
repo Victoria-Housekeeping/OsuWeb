@@ -6,14 +6,15 @@ export async function checkAndParseSkin(file: File): Promise<{ isSkin: boolean; 
     const zip = new JSZip();
     const contents = await zip.loadAsync(file);
     const skinIniName = Object.keys(contents.files).find(path => path.toLowerCase().endsWith('skin.ini'));
+    const hasPngs = Object.keys(contents.files).some(path => path.toLowerCase().endsWith('.png'));
     
-    if (!skinIniName) return { isSkin: false };
+    if (!skinIniName && !hasPngs) return { isSkin: false };
 
-    const skinIniText = await contents.files[skinIniName].async('string');
-    
-    // Parse basic colors from skin.ini
-    const customSkinColors: any = {};
-    const lines = skinIniText.split(/\r?\n/);
+    let customSkinColors: any = {};
+    if (skinIniName) {
+      const skinIniText = await contents.files[skinIniName].async('string');
+      // Parse basic colors from skin.ini
+      const lines = skinIniText.split(/\r?\n/);
     let currentSection = '';
     let currentManiaKeys = 0;
     
@@ -79,6 +80,7 @@ export async function checkAndParseSkin(file: File): Promise<{ isSkin: boolean; 
           }
         }
       }
+    }
     }
     
     if (customSkinColors.comboColors) {
@@ -153,9 +155,11 @@ export async function checkAndParseSkin(file: File): Promise<{ isSkin: boolean; 
       for (const keys of Object.keys(customSkinColors.mania)) {
         const images = customSkinColors.mania[parseInt(keys)].images;
         for (const val of Object.values(images)) {
-           const cleaned = val.replace('.png', '').toLowerCase();
-           if (!imageNamesToFind.includes(cleaned)) {
-               imageNamesToFind.push(cleaned);
+           if (typeof val === 'string') {
+             const cleaned = val.replace('.png', '').toLowerCase();
+             if (!imageNamesToFind.includes(cleaned)) {
+                 imageNamesToFind.push(cleaned);
+             }
            }
         }
       }

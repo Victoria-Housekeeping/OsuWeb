@@ -2,38 +2,7 @@ import { Replay } from '../types';
 
 const REPLAYS_PREFIX = 'osutouch_replays_';
 
-// Pre-seeded legendary replays for the built-in tutorial map
-const DEFAULT_REPLAYS: Record<string, Replay[]> = {
-  'built-in-synthwave-tutorial': [
-    {
-      id: 'default-replay-cookiezi',
-      beatmapId: 'built-in-synthwave-tutorial',
-      playerName: 'Cookiezi',
-      score: 998400,
-      maxCombo: 240,
-      accuracy: 100,
-      date: '01.06.2026',
-    },
-    {
-      id: 'default-replay-osubot',
-      beatmapId: 'built-in-synthwave-tutorial',
-      playerName: 'osu!Bot',
-      score: 842100,
-      maxCombo: 212,
-      accuracy: 94.65,
-      date: '31.05.2026',
-    },
-    {
-      id: 'default-replay-wubwoof',
-      beatmapId: 'built-in-synthwave-tutorial',
-      playerName: 'WubWoofWolf',
-      score: 712000,
-      maxCombo: 185,
-      accuracy: 91.20,
-      date: '28.05.2026',
-    }
-  ]
-};
+const DEFAULT_REPLAYS: Record<string, Replay[]> = {};
 
 /**
  * Get all replays for a specific beatmap difficulty

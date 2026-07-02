@@ -168,10 +168,7 @@ export default function App() {
             }
           }
 
-          if (activeVersion.id === 'built-in-synthwave-tutorial') {
-            const { generateAudioBufferForBeatmap } = await import('./utils/audioSynth');
-            audioBufferToPlay = await generateAudioBufferForBeatmap();
-          } else if (usedAudioBlob) {
+          if (usedAudioBlob) {
             if (settings.safeMode && usedAudioBlob.size > 15 * 1024 * 1024) {
               console.warn('Safe Mode: Audio file is too large for automatic background preview. Skipping BGM to prevent memory crash.');
               if (trianglesBuffer && !isCancelled) {

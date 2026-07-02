@@ -53,9 +53,12 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
   const skinLongPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const skinCancelDeleteTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const [cloningModalState, setCloningModalState] = useState<'closed' | 'initial' | 'select_map' | 'change_something'>('closed');
+  const [cloningModalState, setCloningModalState] = useState<'closed' | 'initial' | 'select_map' | 'change_something' | 'beatmap_library' | 'skin_library'>('closed');
   const [selectedMapGroupToClone, setSelectedMapGroupToClone] = useState<MapGroup | null>(null);
   const cloneFileInputRef = useRef<HTMLInputElement>(null);
+
+  const localBeatmapUrls = (import.meta as any).glob('/public/*.{osz,zip}', { query: '?url', import: 'default', eager: true }) as Record<string, string>;
+  const localSkinUrls = (import.meta as any).glob('/public/*.osk', { query: '?url', import: 'default', eager: true }) as Record<string, string>;
 
   useEffect(() => {
     getAllKompliSkins().then(skins => setKompliSkins(skins.map(s => s.data)));
@@ -282,6 +285,23 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
     }
   };
 
+  const importFromLibrary = async (url: string, isSkin: boolean) => {
+    try {
+      setIsLoading(true);
+      setLoadingStep(`Lade ${isSkin ? 'Skin' : 'Beatmap'} herunter...`);
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const filename = url.split('/').pop() || (isSkin ? 'skin.osk' : 'beatmap.osz');
+      const file = new File([blob], filename);
+      
+      setCloningModalState('closed');
+      await processOszFile(file);
+    } catch (err: any) {
+      setErrorMsg(`Fehler beim Importieren: ${err.message}`);
+      setIsLoading(false);
+    }
+  };
+
   const processOszFile = async (file: File) => {
     setIsLoading(true);
     setErrorMsg(null);
@@ -480,11 +500,12 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
 
   const handleDeleteClick = async (e: React.MouseEvent, idx: number, group: MapGroup) => {
     e.stopPropagation();
-    if (!group.fileName) return;
 
     if (deleteConfirmIdx === idx) {
       try {
-        await deleteOszFile(group.fileName);
+        if (group.fileName) {
+          await deleteOszFile(group.fileName);
+        }
         
         setMapGroups(prev => prev.filter((_, i) => i !== idx));
         setDeleteConfirmIdx(null);
@@ -840,152 +861,152 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
 
               {/* Versions / Difficulties selector grid */}
               <div className="flex flex-col gap-3 relative z-10">
-                <span className="text-[10px] font-black font-mono tracking-widest text-gray-450 uppercase">SCHWIERIGKEITEN</span>
-                <div className="flex flex-wrap gap-2">
-                  {activeGroup.versions.map((ver, idx) => {
-                    const stars = getStarRating(ver);
-                    const isSelected = idx === selectedVersionIdx;
-                    return (
-                      <button
-                        key={ver.id}
-                        id={`btn-difficulty-${idx}`}
-                        onClick={() => handleDifficultySelect(selectedGroupIdx, idx)}
-                        className={`px-3 py-2 rounded-sm text-xs font-bold tracking-wide transition-all border flex items-center gap-1.5 cursor-pointer ${
-                          isSelected
-                            ? 'bg-[#00E8FF] border-[#00E8FF] text-black font-black uppercase shadow-[0_0_15px_rgba(0,232,255,0.35)] scale-105'
-                            : 'bg-[#1C1C24] border-white/5 hover:border-white/15 text-gray-300'
+                    <span className="text-[10px] font-black font-mono tracking-widest text-gray-450 uppercase">SCHWIERIGKEITEN</span>
+                    <div className="flex flex-wrap gap-2">
+                      {activeGroup.versions.map((ver, idx) => {
+                        const stars = getStarRating(ver);
+                        const isSelected = idx === selectedVersionIdx;
+                        return (
+                          <button
+                            key={ver.id}
+                            id={`btn-difficulty-${idx}`}
+                            onClick={() => handleDifficultySelect(selectedGroupIdx, idx)}
+                            className={`px-3 py-2 rounded-sm text-xs font-bold tracking-wide transition-all border flex items-center gap-1.5 cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#00E8FF] border-[#00E8FF] text-black font-black uppercase shadow-[0_0_15px_rgba(0,232,255,0.35)] scale-105'
+                                : 'bg-[#1C1C24] border-white/5 hover:border-white/15 text-gray-300'
+                            }`}
+                          >
+                            <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-black' : ''}`} style={{ backgroundColor: isSelected ? undefined : getStarColor(stars) }} />
+                            <span>{ver.version}</span>
+                            <span className={`text-[10px] font-mono ${isSelected ? 'text-black/80 font-black' : 'text-gray-400'}`}>★{stars}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Star Starry Difficulty Card Banner */}
+                  <div className={`relative z-10 border rounded-sm p-4 flex items-center justify-between ${getStarBgClass(getStarRating(activeVersion))}`}>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-bold font-mono tracking-widest uppercase">STAR RATING DIE DIFFICULTY</span>
+                      <span className="text-3xl font-black tracking-tighter mt-1 italic font-mono flex items-baseline gap-1">
+                        {getStarRating(activeVersion)}
+                        <span className="text-base font-normal">★</span>
+                      </span>
+                    </div>
+                    <div className="text-right flex flex-col items-end gap-1 font-mono text-[10px]">
+                      <span className="font-extrabold uppercase bg-white/5 border border-white/15 px-2 py-0.5 rounded text-white tracking-wider">
+                        {getStarRating(activeVersion) < 3.2 ? 'SIMPLE' : getStarRating(activeVersion) < 4.5 ? 'MEDIUM' : getStarRating(activeVersion) < 5.8 ? 'HARD' : 'INSANE!'}
+                      </span>
+                      <span className="text-gray-400 mt-1">Länge: {Math.floor((activeVersion.duration || 120000) / 60000)}m {Math.floor(((activeVersion.duration || 120000) % 60000) / 1000)}s</span>
+                    </div>
+                  </div>
+
+                  {/* Map parameters / Badges layout */}
+                  <div className="grid grid-cols-2 gap-x-5 gap-y-3.5 border-t border-b border-white/[0.06] py-4.5 relative z-10 font-mono">
+                    <div className="flex flex-col">
+                      <div className="flex justify-between items-center text-[10px] font-bold">
+                        <span className="text-gray-400 font-bold tracking-wider">APPROACH RATE (AR)</span>
+                        <span className="text-[#00E8FF] text-xs font-black">{activeVersion.approachRate}</span>
+                      </div>
+                      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden mt-1.5 p-0.5">
+                        <div className="h-full bg-[#00E8FF] rounded-full shadow-[0_0_8px_rgb(0,232,255)]" style={{ width: `${activeVersion.approachRate * 10}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col">
+                      <div className="flex justify-between items-center text-[10px] font-bold">
+                        <span className="text-gray-400 font-bold tracking-wider">CIRCLE SIZE (CS)</span>
+                        <span className="text-cyan-400 text-xs font-black">{activeVersion.circleSize}</span>
+                      </div>
+                      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden mt-1.5 p-0.5">
+                        <div className="h-full bg-cyan-450 rounded-full shadow-[0_0_8px_rgb(34,211,238)]" style={{ width: `${activeVersion.circleSize * 10}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col">
+                      <div className="flex justify-between items-center text-[10px] font-bold">
+                        <span className="text-gray-400 font-bold tracking-wider">OVERALL DIFFICULTY (OD)</span>
+                        <span className="text-yellow-400 text-xs font-black">{activeVersion.overallDifficulty}</span>
+                      </div>
+                      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden mt-1.5 p-0.5">
+                        <div className="h-full bg-yellow-450 rounded-full shadow-[0_0_8px_rgb(250,204,21)]" style={{ width: `${activeVersion.overallDifficulty * 10}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col">
+                      <div className="flex justify-between items-center text-[10px] font-bold">
+                        <span className="text-gray-400 font-bold tracking-wider">HP DRAIN (HP)</span>
+                        <span className="text-emerald-450 text-xs font-black">{activeVersion.hpDrain}</span>
+                      </div>
+                      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden mt-1.5 p-0.5">
+                        <div className="h-full bg-emerald-450 rounded-full shadow-[0_0_8px_rgb(52,211,153)]" style={{ width: `${activeVersion.hpDrain * 10}%` }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Live MODS selection panel right in Details panel! */}
+                  <div className="flex flex-col gap-2 relative z-10">
+                    <span className="text-[10px] font-black font-mono tracking-widest text-gray-450 uppercase">SPIEL MODS</span>
+                    <div id="settings-mods-selector" className="flex gap-2">
+                      <button 
+                        onClick={() => onUpdateSettings({ ...settings, autoPlay: !settings.autoPlay })}
+                        className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold font-mono text-xs cursor-pointer shadow-md transition-all ${
+                          settings.autoPlay 
+                            ? 'bg-yellow-450 border-yellow-500 text-black font-extrabold shadow-yellow-500/20 scale-105' 
+                            : 'bg-[#181820] border-white/5 text-gray-400 font-medium hover:border-white/10'
                         }`}
+                        title="Auto-Play: Lass den Bot fehlerfrei spielen"
                       >
-                        <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-black' : ''}`} style={{ backgroundColor: isSelected ? undefined : getStarColor(stars) }} />
-                        <span>{ver.version}</span>
-                        <span className={`text-[10px] font-mono ${isSelected ? 'text-black/80 font-black' : 'text-gray-400'}`}>★{stars}</span>
+                        AT
                       </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Star Starry Difficulty Card Banner */}
-              <div className={`relative z-10 border rounded-sm p-4 flex items-center justify-between ${getStarBgClass(getStarRating(activeVersion))}`}>
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-bold font-mono tracking-widest uppercase">STAR RATING DIE DIFFICULTY</span>
-                  <span className="text-3xl font-black tracking-tighter mt-1 italic font-mono flex items-baseline gap-1">
-                    {getStarRating(activeVersion)}
-                    <span className="text-base font-normal">★</span>
-                  </span>
-                </div>
-                <div className="text-right flex flex-col items-end gap-1 font-mono text-[10px]">
-                  <span className="font-extrabold uppercase bg-white/5 border border-white/15 px-2 py-0.5 rounded text-white tracking-wider">
-                    {getStarRating(activeVersion) < 3.2 ? 'SIMPLE' : getStarRating(activeVersion) < 4.5 ? 'MEDIUM' : getStarRating(activeVersion) < 5.8 ? 'HARD' : 'INSANE!'}
-                  </span>
-                  <span className="text-gray-400 mt-1">Länge: {Math.floor((activeVersion.duration || 120000) / 60000)}m {Math.floor(((activeVersion.duration || 120000) % 60000) / 1000)}s</span>
-                </div>
-              </div>
-
-              {/* Map parameters / Badges layout */}
-              <div className="grid grid-cols-2 gap-x-5 gap-y-3.5 border-t border-b border-white/[0.06] py-4.5 relative z-10 font-mono">
-                <div className="flex flex-col">
-                  <div className="flex justify-between items-center text-[10px] font-bold">
-                    <span className="text-gray-400 font-bold tracking-wider">APPROACH RATE (AR)</span>
-                    <span className="text-[#00E8FF] text-xs font-black">{activeVersion.approachRate}</span>
+                      <button 
+                        onClick={() => {
+                          if (settings.disableClicking) return;
+                          onUpdateSettings({ ...settings, useKeyboard: !settings.useKeyboard });
+                        }}
+                        className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold font-mono text-xs cursor-pointer shadow-md transition-all ${
+                          settings.useKeyboard 
+                            ? 'bg-cyan-400 border-cyan-500 text-black font-extrabold shadow-cyan-500/20 scale-105' 
+                            : 'bg-[#181820] border-white/5 text-gray-400 font-medium hover:border-white/10'
+                        }`}
+                        title={settings.disableClicking ? "Tastatursteuerung ist erzwungen (Klicks im Spiel deaktiviert)" : "Keys: Klicks per X/Y/Z ausführen"}
+                        style={settings.disableClicking ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                      >
+                        K1
+                      </button>
+                      <button 
+                        onClick={() => {
+                          const nextVal = !settings.disableClicking;
+                          onUpdateSettings({
+                            ...settings,
+                            disableClicking: nextVal,
+                            useKeyboard: nextVal ? true : settings.useKeyboard
+                          });
+                        }}
+                        className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold font-mono text-xs cursor-pointer shadow-md transition-all ${
+                          settings.disableClicking 
+                            ? 'bg-red-500 border-red-600 text-white font-extrabold shadow-red-500/20 scale-105' 
+                            : 'bg-[#181820] border-white/5 text-gray-400 font-medium hover:border-white/10'
+                        }`}
+                        title="No Click: Tippen/Klicks im Spiel deaktivieren (nur X/Y/Z Tastatur)"
+                      >
+                        TK
+                      </button>
+                      <button 
+                        onClick={() => onUpdateSettings({ ...settings, touchControls: !settings.touchControls })}
+                        className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold font-mono text-[10px] cursor-pointer shadow-md transition-all ${
+                          settings.touchControls 
+                            ? 'bg-pink-500 border-pink-600 text-black font-extrabold shadow-pink-500/20 scale-105' 
+                            : 'bg-cyan-500 border-cyan-600 text-black font-extrabold shadow-cyan-500/20 scale-105'
+                        }`}
+                        title={settings.touchControls ? "Mobil-Modus (Touchscreen) ist AKTIV" : "Desktop-Modus (Maus & Tastatur) ist AKTIV"}
+                      >
+                        {settings.touchControls ? 'MOB' : 'DESK'}
+                      </button>
+                    </div>
                   </div>
-                  <div className="h-1.5 bg-white/5 rounded-full overflow-hidden mt-1.5 p-0.5">
-                    <div className="h-full bg-[#00E8FF] rounded-full shadow-[0_0_8px_rgb(0,232,255)]" style={{ width: `${activeVersion.approachRate * 10}%` }} />
-                  </div>
-                </div>
-
-                <div className="flex flex-col">
-                  <div className="flex justify-between items-center text-[10px] font-bold">
-                    <span className="text-gray-400 font-bold tracking-wider">CIRCLE SIZE (CS)</span>
-                    <span className="text-cyan-400 text-xs font-black">{activeVersion.circleSize}</span>
-                  </div>
-                  <div className="h-1.5 bg-white/5 rounded-full overflow-hidden mt-1.5 p-0.5">
-                    <div className="h-full bg-cyan-450 rounded-full shadow-[0_0_8px_rgb(34,211,238)]" style={{ width: `${activeVersion.circleSize * 10}%` }} />
-                  </div>
-                </div>
-
-                <div className="flex flex-col">
-                  <div className="flex justify-between items-center text-[10px] font-bold">
-                    <span className="text-gray-400 font-bold tracking-wider">OVERALL DIFFICULTY (OD)</span>
-                    <span className="text-yellow-400 text-xs font-black">{activeVersion.overallDifficulty}</span>
-                  </div>
-                  <div className="h-1.5 bg-white/5 rounded-full overflow-hidden mt-1.5 p-0.5">
-                    <div className="h-full bg-yellow-450 rounded-full shadow-[0_0_8px_rgb(250,204,21)]" style={{ width: `${activeVersion.overallDifficulty * 10}%` }} />
-                  </div>
-                </div>
-
-                <div className="flex flex-col">
-                  <div className="flex justify-between items-center text-[10px] font-bold">
-                    <span className="text-gray-400 font-bold tracking-wider">HP DRAIN (HP)</span>
-                    <span className="text-emerald-450 text-xs font-black">{activeVersion.hpDrain}</span>
-                  </div>
-                  <div className="h-1.5 bg-white/5 rounded-full overflow-hidden mt-1.5 p-0.5">
-                    <div className="h-full bg-emerald-450 rounded-full shadow-[0_0_8px_rgb(52,211,153)]" style={{ width: `${activeVersion.hpDrain * 10}%` }} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Live MODS selection panel right in Details panel! */}
-              <div className="flex flex-col gap-2 relative z-10">
-                <span className="text-[10px] font-black font-mono tracking-widest text-gray-450 uppercase">SPIEL MODS</span>
-                <div id="settings-mods-selector" className="flex gap-2">
-                  <button 
-                    onClick={() => onUpdateSettings({ ...settings, autoPlay: !settings.autoPlay })}
-                    className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold font-mono text-xs cursor-pointer shadow-md transition-all ${
-                      settings.autoPlay 
-                        ? 'bg-yellow-450 border-yellow-500 text-black font-extrabold shadow-yellow-500/20 scale-105' 
-                        : 'bg-[#181820] border-white/5 text-gray-400 font-medium hover:border-white/10'
-                    }`}
-                    title="Auto-Play: Lass den Bot fehlerfrei spielen"
-                  >
-                    AT
-                  </button>
-                  <button 
-                    onClick={() => {
-                      if (settings.disableClicking) return;
-                      onUpdateSettings({ ...settings, useKeyboard: !settings.useKeyboard });
-                    }}
-                    className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold font-mono text-xs cursor-pointer shadow-md transition-all ${
-                      settings.useKeyboard 
-                        ? 'bg-cyan-400 border-cyan-500 text-black font-extrabold shadow-cyan-500/20 scale-105' 
-                        : 'bg-[#181820] border-white/5 text-gray-400 font-medium hover:border-white/10'
-                    }`}
-                    title={settings.disableClicking ? "Tastatursteuerung ist erzwungen (Klicks im Spiel deaktiviert)" : "Keys: Klicks per X/Y/Z ausführen"}
-                    style={settings.disableClicking ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                  >
-                    K1
-                  </button>
-                  <button 
-                    onClick={() => {
-                      const nextVal = !settings.disableClicking;
-                      onUpdateSettings({
-                        ...settings,
-                        disableClicking: nextVal,
-                        useKeyboard: nextVal ? true : settings.useKeyboard
-                      });
-                    }}
-                    className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold font-mono text-xs cursor-pointer shadow-md transition-all ${
-                      settings.disableClicking 
-                        ? 'bg-red-500 border-red-600 text-white font-extrabold shadow-red-500/20 scale-105' 
-                        : 'bg-[#181820] border-white/5 text-gray-400 font-medium hover:border-white/10'
-                    }`}
-                    title="No Click: Tippen/Klicks im Spiel deaktivieren (nur X/Y/Z Tastatur)"
-                  >
-                    TK
-                  </button>
-                  <button 
-                    onClick={() => onUpdateSettings({ ...settings, touchControls: !settings.touchControls })}
-                    className={`w-10 h-10 rounded-full border flex items-center justify-center font-bold font-mono text-[10px] cursor-pointer shadow-md transition-all ${
-                      settings.touchControls 
-                        ? 'bg-pink-500 border-pink-600 text-black font-extrabold shadow-pink-500/20 scale-105' 
-                        : 'bg-cyan-500 border-cyan-600 text-black font-extrabold shadow-cyan-500/20 scale-105'
-                    }`}
-                    title={settings.touchControls ? "Mobil-Modus (Touchscreen) ist AKTIV" : "Desktop-Modus (Maus & Tastatur) ist AKTIV"}
-                  >
-                    {settings.touchControls ? 'MOB' : 'DESK'}
-                  </button>
-                </div>
-              </div>
 
               {/* High Score Panel resembling osu! ranking */}
               <div className="bg-black/40 border border-white/5 rounded-sm p-4 flex items-center justify-between relative z-10">
@@ -1609,12 +1630,24 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
             
             {cloningModalState === 'initial' && (
               <div className="flex flex-col gap-4">
-                <h3 className="text-xl font-bold text-white mb-2">Beatmap Optionen</h3>
+                <h3 className="text-xl font-bold text-white mb-2">Optionen</h3>
                 <button 
                   onClick={() => setCloningModalState('select_map')}
                   className="bg-[#00E8FF]/10 hover:bg-[#00E8FF]/20 border border-[#00E8FF]/30 text-[#00E8FF] py-4 rounded font-bold transition-colors"
                 >
                   Clone Beatmaps
+                </button>
+                <button 
+                  onClick={() => setCloningModalState('beatmap_library')}
+                  className="bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-400 py-4 rounded font-bold transition-colors"
+                >
+                  Beatmap Library
+                </button>
+                <button 
+                  onClick={() => setCloningModalState('skin_library')}
+                  className="bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 py-4 rounded font-bold transition-colors"
+                >
+                  Skin Library
                 </button>
                 <button 
                   onClick={() => {
@@ -1623,7 +1656,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                   }}
                   className="bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded font-bold transition-colors"
                 >
-                  Import Beatmaps
+                  Import
                 </button>
               </div>
             )}
@@ -1645,6 +1678,85 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                       <div className="text-xs text-gray-400 truncate">{group.artist}</div>
                     </button>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {cloningModalState === 'beatmap_library' && (
+              <div className="flex flex-col gap-4">
+                <h3 className="text-xl font-bold text-white mb-2">Beatmap Library</h3>
+                <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+                  {Object.entries(localBeatmapUrls).map(([path, url]) => {
+                    const filename = path.split('/').pop() || '';
+                    const isImported = mapGroups.some(g => g.fileName === filename);
+                    
+                    return (
+                      <div key={path} className="flex items-center justify-between bg-white/5 border border-white/5 p-3 rounded">
+                        <div className="font-bold text-white truncate max-w-[200px]" title={filename}>{filename}</div>
+                        {isImported ? (
+                          <button
+                            onClick={async () => {
+                              await deleteOszFile(filename);
+                              setMapGroups(prev => prev.filter(g => g.fileName !== filename));
+                            }}
+                            className="p-2 rounded bg-red-500/20 border border-red-500/30 text-red-400 font-bold text-xs hover:bg-red-500/30 transition-colors"
+                          >
+                            Löschen
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => importFromLibrary(url, false)}
+                            className="bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-white rounded py-2 px-4 font-extrabold shadow-[0_0_15px_rgba(52,211,153,0.3)] transition-transform hover:scale-105 text-xs uppercase"
+                          >
+                            Hinzufügen
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {Object.keys(localBeatmapUrls).length === 0 && (
+                    <div className="text-gray-400 text-sm text-center py-4">Keine lokalen Beatmaps gefunden.</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {cloningModalState === 'skin_library' && (
+              <div className="flex flex-col gap-4">
+                <h3 className="text-xl font-bold text-white mb-2">Skin Library</h3>
+                <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+                  {Object.entries(localSkinUrls).map(([path, url]) => {
+                    const filename = path.split('/').pop() || '';
+                    const skinName = filename.replace(/\.osk$/i, '');
+                    const isImported = kompliSkins.some(s => s.name === skinName);
+                    
+                    return (
+                      <div key={path} className="flex items-center justify-between bg-white/5 border border-white/5 p-3 rounded">
+                        <div className="font-bold text-white truncate max-w-[200px]" title={filename}>{filename}</div>
+                        {isImported ? (
+                          <button
+                            onClick={async () => {
+                              await deleteKompliSkin(skinName);
+                              setKompliSkins(prev => prev.filter(s => s.name !== skinName));
+                            }}
+                            className="p-2 rounded bg-red-500/20 border border-red-500/30 text-red-400 font-bold text-xs hover:bg-red-500/30 transition-colors"
+                          >
+                            Löschen
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => importFromLibrary(url, true)}
+                            className="bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-white rounded py-2 px-4 font-extrabold shadow-[0_0_15px_rgba(52,211,153,0.3)] transition-transform hover:scale-105 text-xs uppercase"
+                          >
+                            Hinzufügen
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {Object.keys(localSkinUrls).length === 0 && (
+                    <div className="text-gray-400 text-sm text-center py-4">Keine lokalen Skins gefunden.</div>
+                  )}
                 </div>
               </div>
             )}

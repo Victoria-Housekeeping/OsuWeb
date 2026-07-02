@@ -743,23 +743,33 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     if (scoreEl) {
       const scoreStr = updated.score.toString().padStart(8, '0');
       const firstNonZero = scoreStr.search(/[1-9]/);
+      let leading = '';
+      let active = '';
       if (firstNonZero === -1) {
-        scoreEl.innerHTML = `<span class="font-mono text-xl md:text-2xl text-white/30 font-extrabold tracking-wider">${scoreStr}</span>`;
+        leading = scoreStr;
       } else {
-        const leading = scoreStr.slice(0, firstNonZero);
-        const active = scoreStr.slice(firstNonZero);
-        scoreEl.innerHTML = `<span class="font-mono text-xl md:text-2xl tracking-wider font-extrabold"><span class="text-white/35">${leading}</span><span class="text-white">${active}</span></span>`;
+        leading = scoreStr.slice(0, firstNonZero);
+        active = scoreStr.slice(firstNonZero);
       }
+      
+      const leadingEl = document.getElementById('hud-score-leading');
+      const activeEl = document.getElementById('hud-score-active');
+      if (leadingEl) leadingEl.textContent = leading;
+      if (activeEl) activeEl.textContent = active;
     }
 
     const comboEl = document.getElementById('hud-combo-text');
     if (comboEl) {
-      comboEl.innerHTML = `${updated.combo}<span class="text-2xl font-black not-italic ml-1">x</span>`;
+      comboEl.textContent = `${updated.combo}`;
       const container = document.getElementById('hud-combo-container');
       if (container) {
         container.classList.remove('animate-combo-pop');
-        void container.offsetWidth;
-        container.classList.add('animate-combo-pop');
+        // Use requestAnimationFrame to re-trigger animation without causing synchronous reflow (offsetWidth)
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (container) container.classList.add('animate-combo-pop');
+          });
+        });
       }
     }
     
@@ -1335,7 +1345,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         let laneColor = '#00E8FF';
         let keyImage = '';
         let keyImageD = '';
-        if (settings.skinPreset === 'custom') {
+        if (skin === 'custom') {
           if (settings.customSkinColors?.mania?.[4]) {
             const maniaConf = settings.customSkinColors.mania[4];
             if (maniaConf.colors?.[`colourlight${i + 1}`]) laneColor = maniaConf.colors[`colourlight${i + 1}`];
@@ -1406,7 +1416,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         let noteColor = (lane === 0 || lane === 3) ? '#00E8FF' : '#33EFFF';
         let noteImage = '';
         let holdImage = '';
-        if (settings.skinPreset === 'custom') {
+        if (skin === 'custom') {
           if (settings.customSkinColors?.mania?.[4]) {
             const maniaConf = settings.customSkinColors.mania[4];
             if (maniaConf.colors?.[`colourlight${lane + 1}`]) {
@@ -2478,15 +2488,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const renderFormattedScore = () => {
     const scoreStr = statsRef.current.score.toString().padStart(8, '0');
     const firstNonZero = scoreStr.search(/[1-9]/);
+    let leading = '';
+    let active = '';
     if (firstNonZero === -1) {
-      return <span className="font-mono text-xl md:text-2xl text-white/30 font-extrabold tracking-wider">{scoreStr}</span>;
+      leading = scoreStr;
+    } else {
+      leading = scoreStr.slice(0, firstNonZero);
+      active = scoreStr.slice(firstNonZero);
     }
-    const leading = scoreStr.slice(0, firstNonZero);
-    const active = scoreStr.slice(firstNonZero);
     return (
       <span className="font-mono text-xl md:text-2xl tracking-wider font-extrabold">
-        <span className="text-white/35">{leading}</span>
-        <span className="text-white drop-shadow-[0_0_10px_rgba(0,232,255,0.7)]">{active}</span>
+        <span id="hud-score-leading" className="text-white/35">{leading}</span>
+        <span id="hud-score-active" className="text-white drop-shadow-[0_0_10px_rgba(0,232,255,0.7)]">{active}</span>
       </span>
     );
   };
