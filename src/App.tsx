@@ -5,9 +5,11 @@ import { GameCanvas } from './components/GameCanvas';
 import { ScoreScreen } from './components/ScoreScreen';
 import { IntroAndStartScreen } from './components/IntroAndStartScreen';
 import { getCustomAsset } from './utils/db';
+import { parseIntroIni, IntroIniConfig, DEFAULT_INTRO_INI_CONFIG } from './utils/introIniParser';
 
-import { extractFileFromOsz } from './utils/osuParser';
-import { getOszFile } from './utils/db';
+import JSZip from 'jszip';
+import { extractFileFromOsz, parseOszFile } from './utils/osuParser';
+import { getOszFile, getAllOszFiles } from './utils/db';
 
 export default function App() {
   const [view, setView] = useState<'intro_and_start' | 'selector' | 'playing' | 'score'>('intro_and_start');
@@ -69,6 +71,14 @@ export default function App() {
   // Background music (BGM) playback references
   const [trianglesBuffer, setTrianglesBuffer] = useState<AudioBuffer | null>(null);
   const [isLoadingTriangles, setIsLoadingTriangles] = useState<boolean>(false);
+
+  // Custom intro beatmap resources (when settings.useCustomIntro + customIntroBeatmapId set)
+  const [customIntroVideoUrl, setCustomIntroVideoUrl] = useState<string | null>(null);
+  const [customIntroGifUrl, setCustomIntroGifUrl] = useState<string | null>(null);
+  const [customIntroLoopVideoUrl, setCustomIntroLoopVideoUrl] = useState<string | null>(null);
+  const [customIntroConfig, setCustomIntroConfig] = useState<IntroIniConfig>(DEFAULT_INTRO_INI_CONFIG);
+  const [isResolvingCustomIntro, setIsResolvingCustomIntro] = useState<boolean>(false);
+  const [isIntroEditorOpen, setIsIntroEditorOpen] = useState<boolean>(false);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const bgmSourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -146,7 +156,13 @@ export default function App() {
       return;
     }
 
-    // 3. Songs Selection BGM
+    // 3. If intro editor is open, stop any selection BGM to avoid overlapping with editor audio/video preview
+    if (isIntroEditorOpen) {
+      stopBgm();
+      return;
+    }
+
+    // 4. Songs Selection BGM
     const activeGroup = mapGroups[selectedGroupIdx];
     const activeVersion = activeGroup?.versions[selectedVersionIdx];
 
@@ -208,7 +224,136 @@ export default function App() {
         playBgm('triangles', trianglesBuffer, settings.volume * 0.45);
       }
     }
-  }, [view, selectedGroupIdx, selectedVersionIdx, mapGroups, trianglesBuffer, settings.volume]);
+  }, [view, selectedGroupIdx, selectedVersionIdx, mapGroups, trianglesBuffer, settings.volume, isIntroEditorOpen]);
+
+  // Proactive Custom Intro Asset Syncing / Loading
+  useEffect(() => {
+    let active = true;
+    if (settings.useCustomIntro && settings.customIntroBeatmapId) {
+      resolveCustomIntroBeatmapAssets().then(resolved => {
+        if (!active) return;
+        setCustomIntroVideoUrl(resolved.videoUrl);
+        setCustomIntroGifUrl(resolved.gifUrl);
+        setCustomIntroLoopVideoUrl(resolved.loopVideoUrl);
+        setCustomIntroConfig(resolved.config);
+      });
+    } else {
+      setCustomIntroVideoUrl(null);
+      setCustomIntroGifUrl(null);
+      setCustomIntroLoopVideoUrl(null);
+      setCustomIntroConfig(DEFAULT_INTRO_INI_CONFIG);
+    }
+    return () => {
+      active = false;
+    };
+  }, [settings.useCustomIntro, settings.customIntroBeatmapId, settings.customIntroReloadTrigger, mapGroups]);
+
+  // Resolves the beatmap chosen as the custom intro: extracts its audio, its
+  // video (if any) and its yadaintro.ini config (if bundled). Falls back
+  // gracefully (returns nulls) if anything is missing.
+  const resolveCustomIntroBeatmapAssets = async (): Promise<{
+    audioArrayBuffer: ArrayBuffer | null;
+    videoUrl: string | null;
+    gifUrl: string | null;
+    loopVideoUrl: string | null;
+    config: IntroIniConfig;
+  }> => {
+    const fallback = { audioArrayBuffer: null, videoUrl: null, gifUrl: null, loopVideoUrl: null, config: DEFAULT_INTRO_INI_CONFIG };
+    if (!settings.useCustomIntro || !settings.customIntroBeatmapId) return fallback;
+
+    try {
+      const isFileName = settings.customIntroBeatmapId.endsWith('.osz') || settings.customIntroBeatmapId.endsWith('.zip');
+      let group: MapGroup | undefined;
+      let version: Beatmap | undefined;
+
+      if (isFileName) {
+        group = mapGroups.find(g => g.fileName === settings.customIntroBeatmapId);
+        version = group?.versions[0];
+      } else {
+        group = mapGroups.find(g => g.versions.some(v => v.id === settings.customIntroBeatmapId));
+        version = group?.versions.find(v => v.id === settings.customIntroBeatmapId);
+      }
+
+      if (!group || !version) {
+        const dbFiles = await getAllOszFiles();
+        if (isFileName) {
+          const matchedFile = dbFiles.find(f => f.name === settings.customIntroBeatmapId);
+          if (matchedFile) {
+            const file = new File([matchedFile.blob], matchedFile.name, { type: matchedFile.blob.type });
+            const parsedMaps = await parseOszFile(file);
+            if (parsedMaps.length > 0) {
+              version = parsedMaps[0];
+              group = { title: parsedMaps[0].title, artist: parsedMaps[0].artist, creator: parsedMaps[0].creator, versions: parsedMaps, fileName: matchedFile.name };
+            }
+          }
+        } else {
+          for (const fileItem of dbFiles) {
+            try {
+              const file = new File([fileItem.blob], fileItem.name, { type: fileItem.blob.type });
+              const parsedMaps = await parseOszFile(file);
+              const found = parsedMaps.find(v => v.id === settings.customIntroBeatmapId);
+              if (found) {
+                version = found;
+                group = { title: parsedMaps[0].title, artist: parsedMaps[0].artist, creator: parsedMaps[0].creator, versions: parsedMaps, fileName: fileItem.name };
+                break;
+              }
+            } catch (e) {
+              // skip unreadable archive
+            }
+          }
+        }
+      }
+
+      if (!group || !version || !group.fileName) return fallback;
+
+      const oszBlob = await getOszFile(group.fileName);
+      if (!oszBlob) return fallback;
+
+      let audioArrayBuffer: ArrayBuffer | null = null;
+      if (version.audioFilename) {
+        const audioBlob = await extractFileFromOsz(oszBlob, version.audioFilename);
+        if (audioBlob) audioArrayBuffer = await audioBlob.arrayBuffer();
+      }
+
+      let videoUrl: string | null = null;
+      if (version.videoFilename) {
+        const videoBlob = await extractFileFromOsz(oszBlob, version.videoFilename);
+        if (videoBlob) videoUrl = URL.createObjectURL(videoBlob);
+      }
+
+      let gifUrl: string | null = null;
+      if (version.introGifFilename) {
+        const gifBlob = await extractFileFromOsz(oszBlob, version.introGifFilename);
+        if (gifBlob) gifUrl = URL.createObjectURL(gifBlob);
+      }
+
+      let loopVideoUrl: string | null = null;
+      if (version.introLoopVideoFilename) {
+        const loopVideoBlob = await extractFileFromOsz(oszBlob, version.introLoopVideoFilename);
+        if (loopVideoBlob) loopVideoUrl = URL.createObjectURL(loopVideoBlob);
+      }
+
+      let config: IntroIniConfig = DEFAULT_INTRO_INI_CONFIG;
+      // Read yadaintro.ini directly from zip
+      const zip = await JSZip.loadAsync(oszBlob);
+      const iniFile = Object.keys(zip.files).find(path => path.toLowerCase().endsWith('yadaintro.ini'));
+      if (iniFile) {
+        const iniText = await zip.files[iniFile].async('text');
+        config = parseIntroIni(iniText);
+      } else if (version.introIniFilename) {
+        const iniBlob = await extractFileFromOsz(oszBlob, version.introIniFilename);
+        if (iniBlob) {
+          const iniText = await iniBlob.text();
+          config = parseIntroIni(iniText);
+        }
+      }
+
+      return { audioArrayBuffer, videoUrl, gifUrl, loopVideoUrl, config };
+    } catch (err) {
+      console.warn('Failed to resolve custom intro beatmap assets:', err);
+      return fallback;
+    }
+  };
 
   // Initializes user gesture Web Audio context and loads/decodes BGM resources
   const handleInitAudioContext = async () => {
@@ -230,7 +375,19 @@ export default function App() {
       let decoded: AudioBuffer | null = null;
       try {
         let arrBuffer: ArrayBuffer | null = null;
-        if (settings.useCustomIntro) {
+
+        if (settings.useCustomIntro && settings.customIntroBeatmapId) {
+          setIsResolvingCustomIntro(true);
+          const resolved = await resolveCustomIntroBeatmapAssets();
+          setIsResolvingCustomIntro(false);
+          if (resolved.audioArrayBuffer) {
+            arrBuffer = resolved.audioArrayBuffer;
+          }
+          setCustomIntroVideoUrl(resolved.videoUrl);
+          setCustomIntroGifUrl(resolved.gifUrl);
+          setCustomIntroConfig(resolved.config);
+        } else {
+          // Legacy fallback: a plain MP3 previously saved via the old "import a song" flow
           const customAsset = await getCustomAsset('__custom_intro__.mp3');
           if (customAsset) {
             arrBuffer = await customAsset.arrayBuffer();
@@ -282,17 +439,31 @@ export default function App() {
       setTrianglesBuffer(buffer);
     }
     
-    // Stop the running intro background music source completely as requested
     if (runningSource) {
-      try {
-        runningSource.stop();
-        runningSource.disconnect();
-      } catch (err) {
-        console.warn('Failed to stop running intro source:', err);
+      if (settings.useCustomIntro && settings.customIntroBeatmapId) {
+        // Seamlessly hand over the running source to the menu BGM manager
+        let targetBgmId = settings.customIntroBeatmapId;
+        const group = mapGroups.find(g => g.fileName === settings.customIntroBeatmapId || g.versions.some(v => v.id === settings.customIntroBeatmapId));
+        if (group && group.versions.length > 0) {
+          targetBgmId = group.versions[0].id; // Menu defaults to the first version
+        }
+        
+        bgmSourceRef.current = runningSource;
+        bgmGainRef.current = runningGain || null;
+        currentBgmIdRef.current = targetBgmId;
+      } else {
+        try {
+          runningSource.stop();
+          runningSource.disconnect();
+        } catch (err) {
+          console.warn('Failed to stop running intro source:', err);
+        }
+        stopBgm();
       }
+    } else {
+      stopBgm();
     }
     
-    stopBgm();
     setView('selector');
   };
 
@@ -384,6 +555,7 @@ export default function App() {
           setSelectedGroupIdx={setSelectedGroupIdx}
           selectedVersionIdx={selectedVersionIdx}
           setSelectedVersionIdx={setSelectedVersionIdx}
+          onIntroEditorToggle={setIsIntroEditorOpen}
         />
       )}
 
@@ -391,10 +563,14 @@ export default function App() {
         <IntroAndStartScreen
           onStart={handleStartIntro}
           trianglesBuffer={trianglesBuffer}
-          isLoadingAudio={isLoadingTriangles}
+          isLoadingAudio={isLoadingTriangles || isResolvingCustomIntro}
           onInitAudioContext={handleInitAudioContext}
           settings={settings}
           onUpdateSettings={setSettings}
+          customIntroVideoUrl={settings.useCustomIntro ? customIntroVideoUrl : null}
+          customIntroGifUrl={settings.useCustomIntro ? customIntroGifUrl : null}
+          customIntroLoopVideoUrl={settings.useCustomIntro ? customIntroLoopVideoUrl : null}
+          customIntroConfig={settings.useCustomIntro ? customIntroConfig : DEFAULT_INTRO_INI_CONFIG}
         />
       )}
 

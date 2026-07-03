@@ -264,15 +264,35 @@ export async function parseOszFile(file: File): Promise<Beatmap[]> {
         // Fallback: search for any .mp4 or .webm or similar video file in the zip if we didn't resolve one
         const videoKeys = Object.keys(contents.files).filter(k => {
           const lower = k.toLowerCase();
-          return lower.endsWith('.mp4') || lower.endsWith('.webm') || lower.endsWith('.mov') || lower.endsWith('.avi');
+          return (lower.endsWith('.mp4') || lower.endsWith('.webm') || lower.endsWith('.mov') || lower.endsWith('.avi')) && !lower.includes('intro_loop');
         });
         if (videoKeys.length > 0) {
           beatmap.videoFilename = videoKeys[0];
         }
       }
 
+      // Detect an optional yadaintro.ini bundled alongside this beatmap, used to
+      // configure the custom intro sequence when this beatmap is chosen as the intro.
+      const introIniKey = Object.keys(contents.files).find(path => path.toLowerCase().endsWith('yadaintro.ini'));
+      if (introIniKey) {
+        beatmap.introIniFilename = introIniKey;
+      }
+
+      const introGifKey = Object.keys(contents.files).find(path => path.toLowerCase().endsWith('.gif'));
+      if (introGifKey) {
+        beatmap.introGifFilename = introGifKey;
+      }
+
+      const introLoopVideoKey = Object.keys(contents.files).find(path => {
+        const lower = path.toLowerCase();
+        return lower.endsWith('intro_loop.webm') || lower.endsWith('intro_loop.mp4');
+      });
+      if (introLoopVideoKey) {
+        beatmap.introLoopVideoFilename = introLoopVideoKey;
+      }
+
       // Add a unique ID
-      beatmap.id = `${file.name}-${beatmap.version}-${Math.random().toString(36).substr(2, 9)}`;
+      beatmap.id = `${file.name}-${beatmap.version}`;
       beatmaps.push(beatmap);
     } catch (err) {
       console.error(`Fehler beim Parsen der Beatmap ${osuPath}:`, err);

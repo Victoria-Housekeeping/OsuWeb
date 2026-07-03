@@ -42,7 +42,10 @@ export interface Beatmap {
   bgBlob?: Blob;
   videoBlob?: Blob;
   videoFilename?: string;
+  introGifFilename?: string; // resolved path of optional intro loop GIF
+  introLoopVideoFilename?: string; // resolved path of optional intro loop video (webm/mp4)
   colors?: string[];
+  introIniFilename?: string; // resolved path of yadaintro.ini inside the .osz, if present
 
   hitObjects: HitObject[];
   duration: number; // in milliseconds
@@ -92,6 +95,9 @@ export interface GameSettings {
   randomKidMode?: boolean;
   enableReplays?: boolean;
   useCustomIntro?: boolean;
+  customIntroBeatmapId?: string; // id of the Beatmap version chosen as the custom intro
+  customIntroBeatmapTitle?: string; // cached display title, so UI doesn't need mapGroups loaded
+  customIntroReloadTrigger?: number; // timestamp to force re-reading custom intro assets after edits
   customUiScale?: number;
   autoScaleUi?: boolean;
   safeMode?: boolean;

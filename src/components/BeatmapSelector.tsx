@@ -3,10 +3,11 @@ import { Beatmap, GameSettings, PlayStats, MapGroup } from '../types';
 import JSZip from 'jszip';
 import { parseOszFile, checkAndParseSkin } from '../utils/osuParser';
 import { generateAudioBufferForBeatmap } from '../utils/audioSynth';
-import { saveOszFile, getAllOszFiles, deleteOszFile, saveCustomAsset, saveKompliSkin, getAllKompliSkins, deleteKompliSkin, getOszFile } from '../utils/db';
+import { saveOszFile, getAllOszFiles, deleteOszFile, saveKompliSkin, getAllKompliSkins, deleteKompliSkin, getOszFile } from '../utils/db';
 import { Upload, Music, Settings, Play, Info, Check, EyeOff, Sliders, Volume2, VolumeX, Trophy, HelpCircle, X, Trash2, Search, Tv, Plus } from 'lucide-react';
 import { getReplaysForBeatmap, deleteReplay, saveReplay } from '../utils/replays';
 import { extractFileFromOsz } from '../utils/osuParser';
+import { IntroEditor } from './IntroEditor';
 
 interface BeatmapSelectorProps {
   onSelect: (beatmap: Beatmap, audioBuffer: AudioBuffer) => void;
@@ -19,6 +20,7 @@ interface BeatmapSelectorProps {
   setSelectedGroupIdx: React.Dispatch<React.SetStateAction<number>>;
   selectedVersionIdx: number;
   setSelectedVersionIdx: React.Dispatch<React.SetStateAction<number>>;
+  onIntroEditorToggle?: (open: boolean) => void;
 }
 
 export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
@@ -32,6 +34,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
   setSelectedGroupIdx,
   selectedVersionIdx,
   setSelectedVersionIdx,
+  onIntroEditorToggle,
 }) => {
   const [deleteConfirmIdx, setDeleteConfirmIdx] = useState<number | null>(null);
   const [deletedTrigger, setDeletedTrigger] = useState<number>(0);
@@ -53,9 +56,17 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
   const skinLongPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const skinCancelDeleteTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const [cloningModalState, setCloningModalState] = useState<'closed' | 'initial' | 'select_map' | 'change_something' | 'beatmap_library' | 'skin_library'>('closed');
+  const [cloningModalState, setCloningModalState] = useState<'closed' | 'initial' | 'select_map' | 'change_something' | 'beatmap_library' | 'skin_library' | 'beatmaps_menu' | 'skins_menu'>('closed');
+  const [importMode, setImportMode] = useState<'any' | 'beatmap' | 'skin'>('any');
   const [selectedMapGroupToClone, setSelectedMapGroupToClone] = useState<MapGroup | null>(null);
   const cloneFileInputRef = useRef<HTMLInputElement>(null);
+
+  const [showIntroBeatmapPicker, setShowIntroBeatmapPicker] = useState<boolean>(false);
+  const [showIntroEditor, setShowIntroEditor] = useState<boolean>(false);
+
+  useEffect(() => {
+    onIntroEditorToggle?.(showIntroEditor);
+  }, [showIntroEditor, onIntroEditorToggle]);
 
   const localBeatmapUrls = (import.meta as any).glob('/public/*.{osz,zip}', { query: '?url', import: 'default', eager: true }) as Record<string, string>;
   const localSkinUrls = (import.meta as any).glob('/public/*.osk', { query: '?url', import: 'default', eager: true }) as Record<string, string>;
@@ -281,7 +292,8 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
         setErrorMsg('Safe Mode: Das OSZ Archiv ist zu groß (Maximal 80 MB). Größere Dateien können schwächere Geräte überlasten.');
         return;
       }
-      await processOszFile(file);
+      await processOszFile(file, importMode === 'any' ? undefined : importMode);
+      e.target.value = '';
     }
   };
 
@@ -295,14 +307,14 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
       const file = new File([blob], filename);
       
       setCloningModalState('closed');
-      await processOszFile(file);
+      await processOszFile(file, isSkin ? 'skin' : 'beatmap');
     } catch (err: any) {
       setErrorMsg(`Fehler beim Importieren: ${err.message}`);
       setIsLoading(false);
     }
   };
 
-  const processOszFile = async (file: File) => {
+  const processOszFile = async (file: File, forceType?: 'beatmap' | 'skin') => {
     setIsLoading(true);
     setErrorMsg(null);
 
@@ -320,28 +332,35 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
     }
 
     try {
-      // Check if it's a skin first
-      const skinCheck = await checkAndParseSkin(file);
-      if (skinCheck && skinCheck.isSkin) {
-        setLoadingStep('Speichere Kompli-Skin...');
-        const newSkin = {
-          name: skinCheck.skinName || displayName,
-          customSkinColors: skinCheck.customSkinColors,
-          customSkinImages: skinCheck.customSkinImages
-        };
-        await saveKompliSkin(newSkin.name, newSkin);
-        
-        // Refresh kompli skins list
-        const skinsList = await getAllKompliSkins();
-        setKompliSkins(skinsList.map(s => s.data));
-        
-        setShowSettingsDrawer(true);
-        setTimeout(() => skinsSectionRef.current?.scrollIntoView({ behavior: 'smooth' }), 300);
+      if (forceType !== 'beatmap') {
+        // Check if it's a skin first
+        const skinCheck = await checkAndParseSkin(file);
+        if (skinCheck && skinCheck.isSkin) {
+          setLoadingStep('Speichere Kompli-Skin...');
+          const newSkin = {
+            name: skinCheck.skinName || displayName,
+            customSkinColors: skinCheck.customSkinColors,
+            customSkinImages: skinCheck.customSkinImages
+          };
+          await saveKompliSkin(newSkin.name, newSkin);
+          
+          // Refresh kompli skins list
+          const skinsList = await getAllKompliSkins();
+          setKompliSkins(skinsList.map(s => s.data));
+          
+          setShowSettingsDrawer(true);
+          setTimeout(() => skinsSectionRef.current?.scrollIntoView({ behavior: 'smooth' }), 300);
 
-        document.title = 'Skin importiert! ✨';
-        setTimeout(() => { document.title = 'yada!'; }, 2000);
-        setIsLoading(false);
-        return;
+          document.title = 'Skin importiert! ✨';
+          setTimeout(() => { document.title = 'yada!'; }, 2000);
+          setIsLoading(false);
+          setCloningModalState('closed');
+          return;
+        } else if (forceType === 'skin') {
+          setErrorMsg('Die Datei konnte nicht als Skin geladen werden (keine Skin-Elemente oder ini-Datei gefunden).');
+          setIsLoading(false);
+          return;
+        }
       }
 
       setLoadingStep('Lese Beatmap Archiv (.osz)...');
@@ -378,9 +397,10 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
       
       setLoadingStep('');
       setIsLoading(false);
+      setCloningModalState('closed');
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || 'Die Beatmap-Datei konnte nicht gelesen werden.');
+      setErrorMsg(err.message || 'Die Datei konnte nicht gelesen werden.');
       setIsLoading(false);
     }
   };
@@ -1134,7 +1154,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                 <div className="flex items-center justify-between">
                   <div>
                     <h4 className="font-semibold text-white">Eigenes Intro verwenden</h4>
-                    <p className="text-xs text-gray-400 mt-0.5">Ersetzt das Standard-Intro mit einer eigenen MP3-Datei</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Ersetzt das Standard-Intro mit einer eigenen Beatmap aus deiner Liste</p>
                   </div>
                   <button
                     onClick={() => toggleSettingBool('useCustomIntro')}
@@ -1148,21 +1168,44 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                   </button>
                 </div>
                 {settings.useCustomIntro && (
-                  <div className="flex items-center justify-between bg-black/20 rounded p-2 border border-white/5">
-                    <span className="text-xs text-gray-400">Wähle eine MP3-Datei:</span>
-                    <input 
-                      type="file" 
-                      accept=".mp3,audio/mpeg" 
-                      className="text-xs text-white max-w-[160px]" 
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          await saveCustomAsset('__custom_intro__.mp3', file);
-                          alert('Neues Intro gespeichert!');
-                        }
-                      }}
-                    />
+                  <div className="flex flex-col bg-black/20 rounded p-3 border border-white/5 gap-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs text-gray-400 truncate">
+                        {settings.customIntroBeatmapTitle
+                          ? <>Gewählt: <span className="text-white font-semibold">{settings.customIntroBeatmapTitle}</span></>
+                          : 'Noch keine Beatmap gewählt'}
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {settings.customIntroBeatmapId && (
+                          <button
+                            onClick={() => onUpdateSettings({ ...settings, customIntroBeatmapId: undefined, customIntroBeatmapTitle: undefined })}
+                            className="p-1.5 rounded bg-red-500/20 border border-red-500/30 text-red-400 font-bold text-[10px] hover:bg-red-500/30 transition-colors uppercase"
+                          >
+                            Entfernen
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setShowIntroBeatmapPicker(true)}
+                          className="bg-[#00E8FF]/10 hover:bg-[#00E8FF]/20 border border-[#00E8FF]/30 text-[#00E8FF] rounded py-1.5 px-2.5 font-bold text-[10px] uppercase transition-colors"
+                        >
+                          Wählen
+                        </button>
+                      </div>
+                    </div>
+                    {settings.customIntroBeatmapId && (
+                      <button
+                        onClick={() => setShowIntroEditor(true)}
+                        className="w-full text-center bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-400 rounded py-2 px-3 font-bold text-xs uppercase transition-colors"
+                      >
+                        Intro anpassen / Editor
+                      </button>
+                    )}
                   </div>
+                )}
+                {settings.useCustomIntro && (
+                  <p className="text-[10px] text-gray-500 leading-relaxed">
+                    Tipp: Lege eine <code className="text-gray-400">yadaintro.ini</code> in deine Beatmap-Datei, um Video-Loop-Points vor dem Tippen, den Audio/Video-Startpunkt danach, eigene Texteinblendungen sowie den Zeitpunkt von Logo und Titel-Screen selbst festzulegen.
+                  </p>
                 )}
               </div>
 
@@ -1632,31 +1675,76 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               <div className="flex flex-col gap-4">
                 <h3 className="text-xl font-bold text-white mb-2">Optionen</h3>
                 <button 
-                  onClick={() => setCloningModalState('select_map')}
-                  className="bg-[#00E8FF]/10 hover:bg-[#00E8FF]/20 border border-[#00E8FF]/30 text-[#00E8FF] py-4 rounded font-bold transition-colors"
+                  onClick={() => setCloningModalState('beatmaps_menu')}
+                  className="bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-400 py-4 rounded font-bold transition-colors uppercase text-sm tracking-wider"
                 >
-                  Clone Beatmaps
+                  Beatmaps
                 </button>
                 <button 
+                  onClick={() => setCloningModalState('skins_menu')}
+                  className="bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 py-4 rounded font-bold transition-colors uppercase text-sm tracking-wider"
+                >
+                  Skins
+                </button>
+                <button 
+                  onClick={() => setCloningModalState('select_map')}
+                  className="bg-[#00E8FF]/10 hover:bg-[#00E8FF]/20 border border-[#00E8FF]/30 text-[#00E8FF] py-4 rounded font-bold transition-colors uppercase text-sm tracking-wider"
+                >
+                  Clones
+                </button>
+              </div>
+            )}
+
+            {cloningModalState === 'beatmaps_menu' && (
+              <div className="flex flex-col gap-4">
+                <h3 className="text-xl font-bold text-white mb-2">Beatmaps</h3>
+                <button 
                   onClick={() => setCloningModalState('beatmap_library')}
-                  className="bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-400 py-4 rounded font-bold transition-colors"
+                  className="bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-400 py-4 rounded font-bold transition-colors uppercase text-sm tracking-wider"
                 >
                   Beatmap Library
                 </button>
                 <button 
+                  onClick={() => {
+                    setImportMode('beatmap');
+                    fileInputRef.current?.click();
+                  }}
+                  className="bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded font-bold transition-colors uppercase text-sm tracking-wider"
+                >
+                  Beatmap Import
+                </button>
+                <button 
+                  onClick={() => setCloningModalState('initial')}
+                  className="mt-2 border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white py-2 rounded font-bold text-xs transition-colors uppercase"
+                >
+                  Zurück
+                </button>
+              </div>
+            )}
+
+            {cloningModalState === 'skins_menu' && (
+              <div className="flex flex-col gap-4">
+                <h3 className="text-xl font-bold text-white mb-2">Skins</h3>
+                <button 
                   onClick={() => setCloningModalState('skin_library')}
-                  className="bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 py-4 rounded font-bold transition-colors"
+                  className="bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 py-4 rounded font-bold transition-colors uppercase text-sm tracking-wider"
                 >
                   Skin Library
                 </button>
                 <button 
                   onClick={() => {
-                    setCloningModalState('closed');
+                    setImportMode('skin');
                     fileInputRef.current?.click();
                   }}
-                  className="bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded font-bold transition-colors"
+                  className="bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded font-bold transition-colors uppercase text-sm tracking-wider"
                 >
-                  Import
+                  Skin Import
+                </button>
+                <button 
+                  onClick={() => setCloningModalState('initial')}
+                  className="mt-2 border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white py-2 rounded font-bold text-xs transition-colors uppercase"
+                >
+                  Zurück
                 </button>
               </div>
             )}
@@ -1664,7 +1752,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
             {cloningModalState === 'select_map' && (
               <div className="flex flex-col gap-4">
                 <h3 className="text-xl font-bold text-white mb-2">Wähle eine Beatmap zum Klonen</h3>
-                <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+                <div className="flex flex-col gap-2 max-h-[50vh] overflow-y-auto custom-scrollbar pr-2">
                   {mapGroups.map(group => (
                     <button
                       key={group.title}
@@ -1679,13 +1767,19 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     </button>
                   ))}
                 </div>
+                <button 
+                  onClick={() => setCloningModalState('initial')}
+                  className="mt-2 border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white py-2 rounded font-bold text-xs transition-colors uppercase"
+                >
+                  Zurück
+                </button>
               </div>
             )}
 
             {cloningModalState === 'beatmap_library' && (
               <div className="flex flex-col gap-4">
                 <h3 className="text-xl font-bold text-white mb-2">Beatmap Library</h3>
-                <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+                <div className="flex flex-col gap-3 max-h-[50vh] overflow-y-auto custom-scrollbar pr-2">
                   {Object.entries(localBeatmapUrls).map(([path, url]) => {
                     const filename = path.split('/').pop() || '';
                     const isImported = mapGroups.some(g => g.fileName === filename);
@@ -1718,13 +1812,19 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     <div className="text-gray-400 text-sm text-center py-4">Keine lokalen Beatmaps gefunden.</div>
                   )}
                 </div>
+                <button 
+                  onClick={() => setCloningModalState('beatmaps_menu')}
+                  className="mt-2 border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white py-2 rounded font-bold text-xs transition-colors uppercase"
+                >
+                  Zurück
+                </button>
               </div>
             )}
 
             {cloningModalState === 'skin_library' && (
               <div className="flex flex-col gap-4">
                 <h3 className="text-xl font-bold text-white mb-2">Skin Library</h3>
-                <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+                <div className="flex flex-col gap-3 max-h-[50vh] overflow-y-auto custom-scrollbar pr-2">
                   {Object.entries(localSkinUrls).map(([path, url]) => {
                     const filename = path.split('/').pop() || '';
                     const skinName = filename.replace(/\.osk$/i, '');
@@ -1758,6 +1858,12 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                     <div className="text-gray-400 text-sm text-center py-4">Keine lokalen Skins gefunden.</div>
                   )}
                 </div>
+                <button 
+                  onClick={() => setCloningModalState('skins_menu')}
+                  className="mt-2 border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white py-2 rounded font-bold text-xs transition-colors uppercase"
+                >
+                  Zurück
+                </button>
               </div>
             )}
 
@@ -1776,11 +1882,150 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
                 >
                   Change beatmap
                 </button>
+                <button 
+                  onClick={() => setCloningModalState('select_map')}
+                  className="mt-2 border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white py-2 rounded font-bold text-xs transition-colors uppercase"
+                >
+                  Zurück
+                </button>
               </div>
             )}
           </div>
         </div>
       )}
+
+      {/* Custom Intro Beatmap Picker Modal */}
+      {showIntroBeatmapPicker && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[160] flex flex-col items-center justify-center p-4">
+          <div className="bg-[#12121A] border border-white/10 rounded-lg p-6 max-w-md w-full shadow-2xl relative">
+            <button
+              onClick={() => setShowIntroBeatmapPicker(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="text-xl font-bold text-white mb-1">Intro-Beatmap wählen (Song-Ebene)</h3>
+            <p className="text-xs text-gray-400 mb-4">
+              Diese Beatmap wird beim Programmstart anstelle des Standard-Intros geladen. Enthält sie eine <code className="text-gray-300">yadaintro.ini</code>, wird das Intro danach konfiguriert.
+            </p>
+
+            <div className="flex flex-col gap-2 max-h-[55vh] overflow-y-auto custom-scrollbar pr-2">
+              {mapGroups.length === 0 && (
+                <div className="text-gray-400 text-sm text-center py-6">
+                  Du hast noch keine Beatmaps importiert. Importiere zuerst eine Beatmap, um sie als Intro zu nutzen.
+                </div>
+              )}
+              {mapGroups.map(group => {
+                const isSelected = settings.customIntroBeatmapId === group.fileName || group.versions.some(v => v.id === settings.customIntroBeatmapId);
+                const hasIni = group.versions.some(v => !!v.introIniFilename);
+                const hasVideo = group.versions.some(v => !!v.videoFilename);
+                return (
+                  <button
+                    key={group.fileName || group.title}
+                    onClick={() => {
+                      onUpdateSettings({
+                        ...settings,
+                        customIntroBeatmapId: group.fileName || group.versions[0]?.id,
+                        customIntroBeatmapTitle: group.title,
+                      });
+                      setShowIntroBeatmapPicker(false);
+                    }}
+                    className={`w-full text-left flex flex-col gap-1 rounded-lg p-3 border transition-colors mb-2 ${
+                      isSelected
+                        ? 'bg-[#00E8FF]/10 border-[#00E8FF]/30 text-[#00E8FF]'
+                        : 'bg-white/5 border-white/5 text-gray-300 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 w-full">
+                      <span className="font-bold truncate text-sm">
+                        {group.title}
+                      </span>
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        {hasIni && (
+                          <span className="text-[8px] uppercase tracking-wide bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded px-1.5 py-0.5">
+                            ini
+                          </span>
+                        )}
+                        {hasVideo && (
+                          <span className="text-[8px] uppercase tracking-wide bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded px-1.5 py-0.5">
+                            video
+                          </span>
+                        )}
+                        {isSelected && <Check className="w-3.5 h-3.5 text-[#00E8FF]" />}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-400 truncate w-full">{group.artist}</div>
+                  </button>
+                );
+              })}
+              {false && mapGroups.map(group => (
+                <div key={group.fileName || group.title} className="bg-white/5 border border-white/5 rounded p-3">
+                  <div className="font-bold text-white truncate">{group.title}</div>
+                  <div className="text-xs text-gray-400 truncate mb-2">{group.artist}</div>
+                  <div className="flex flex-col gap-1.5">
+                    {group.versions.map(ver => {
+                      const isSelected = settings.customIntroBeatmapId === ver.id;
+                      return (
+                        <button
+                          key={ver.id}
+                          onClick={() => {
+                            onUpdateSettings({
+                              ...settings,
+                              customIntroBeatmapId: ver.id,
+                              customIntroBeatmapTitle: `${group.title} [${ver.version}]`,
+                            });
+                            setShowIntroBeatmapPicker(false);
+                          }}
+                          className={`text-left flex items-center justify-between gap-2 rounded py-2 px-3 text-xs font-semibold transition-colors ${
+                            isSelected
+                              ? 'bg-[#00E8FF]/20 border border-[#00E8FF]/40 text-[#00E8FF]'
+                              : 'bg-white/5 border border-white/5 text-gray-300 hover:bg-white/10 hover:text-white'
+                          }`}
+                        >
+                          <span className="truncate">{ver.version}</span>
+                          <span className="flex items-center gap-1.5 shrink-0">
+                            {ver.introIniFilename && (
+                              <span className="text-[9px] uppercase tracking-wide bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded px-1.5 py-0.5">
+                                ini
+                              </span>
+                            )}
+                            {ver.videoFilename && (
+                              <span className="text-[9px] uppercase tracking-wide bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded px-1.5 py-0.5">
+                                video
+                              </span>
+                            )}
+                            {isSelected && <Check className="w-3.5 h-3.5" />}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showIntroEditor && (() => {
+        const selectedCustomIntroGroup = mapGroups.find(g => g.fileName === settings.customIntroBeatmapId || g.versions.some(v => v.id === settings.customIntroBeatmapId));
+        if (!selectedCustomIntroGroup) return null;
+        return (
+          <IntroEditor
+            group={selectedCustomIntroGroup}
+            settings={settings}
+            onClose={() => setShowIntroEditor(false)}
+            onSave={() => {
+              setShowIntroEditor(false);
+              onUpdateSettings({
+                ...settings,
+                customIntroReloadTrigger: Date.now()
+              });
+            }}
+          />
+        );
+      })()}
 
     </div>
   );
