@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { Beatmap, HitObject } from '../types';
+import { Beatmap, HitObject, TimingPoint } from '../types';
 
 export async function checkAndParseSkin(file: File): Promise<{ isSkin: boolean; skinName?: string; customSkinColors?: any; customSkinImages?: any } | null> {
   try {
@@ -202,11 +202,7 @@ export async function checkAndParseSkin(file: File): Promise<{ isSkin: boolean; 
   }
 }
 
-interface TimingPoint {
-  time: number;
-  beatLength: number; // positive = ms per beat, negative = velocity multiplier
-  uninherited: boolean;
-}
+
 
 export async function extractFileFromOsz(oszBlob: Blob, filename: string): Promise<Blob | null> {
   const zip = new JSZip();
@@ -575,6 +571,7 @@ export async function parseOsuText(text: string): Promise<Beatmap> {
     beatmap.duration = hitObjects[hitObjects.length - 1].endTime || hitObjects[hitObjects.length - 1].time;
   }
 
+  beatmap.timingPoints = timingPoints;
   return beatmap as Beatmap;
 }
 

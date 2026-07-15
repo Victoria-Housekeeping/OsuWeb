@@ -4,10 +4,21 @@ import JSZip from 'jszip';
 import { parseOszFile, checkAndParseSkin } from '../utils/osuParser';
 import { generateAudioBufferForBeatmap } from '../utils/audioSynth';
 import { saveOszFile, getAllOszFiles, deleteOszFile, saveKompliSkin, getAllKompliSkins, deleteKompliSkin, getOszFile } from '../utils/db';
-import { Upload, Music, Settings, Play, Info, Check, EyeOff, Sliders, Volume2, VolumeX, Trophy, HelpCircle, X, Trash2, Search, Tv, Plus } from 'lucide-react';
+import { Upload, Music, Settings, Play, Info, Check, EyeOff, Sliders, Volume2, VolumeX, Trophy, HelpCircle, X, Trash2, Search, Tv, Plus, ChevronDown, ChevronRight, Folder, FolderOpen, Loader, LogOut, Globe } from 'lucide-react';
 import { getReplaysForBeatmap, deleteReplay, saveReplay } from '../utils/replays';
 import { extractFileFromOsz } from '../utils/osuParser';
 import { IntroEditor } from './IntroEditor';
+import { BeatmapEditor } from './BeatmapEditor';
+import { InputDeviceSelector } from './InputDeviceSelector';
+import {
+  googleSignIn,
+  initAuth,
+  downloadDriveFileBlob,
+  listDriveFolderFiles,
+  fetchDriveMetadata,
+  parseGoogleDriveUrl,
+  logout as googleLogout
+} from '../utils/googleAuth';
 
 interface BeatmapSelectorProps {
   onSelect: (beatmap: Beatmap, audioBuffer: AudioBuffer) => void;
@@ -20,6 +31,7 @@ interface BeatmapSelectorProps {
   setSelectedGroupIdx: React.Dispatch<React.SetStateAction<number>>;
   selectedVersionIdx: number;
   setSelectedVersionIdx: React.Dispatch<React.SetStateAction<number>>;
+  onEditorToggle?: (isOpen: boolean) => void;
   onIntroEditorToggle?: (open: boolean) => void;
 }
 
@@ -35,6 +47,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
   selectedVersionIdx,
   setSelectedVersionIdx,
   onIntroEditorToggle,
+  onEditorToggle,
 }) => {
   const [deleteConfirmIdx, setDeleteConfirmIdx] = useState<number | null>(null);
   const [deletedTrigger, setDeletedTrigger] = useState<number>(0);
@@ -51,10 +64,55 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [kompliSkins, setKompliSkins] = useState<any[]>([]);
   
+  // Google Drive & Library Collection States
+  const [gdriveLinks, setGdriveLinks] = useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem('yada_gdrive_links');
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('yada_gdrive_links', JSON.stringify(gdriveLinks));
+  }, [gdriveLinks]);
+
+  const [user, setUser] = useState<any | null>(null);
+  const [gdriveToken, setGdriveToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = initAuth(
+      (u, t) => {
+        setUser(u);
+        setGdriveToken(t);
+      },
+      () => {
+        setUser(null);
+        setGdriveToken(null);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const [gdriveModalType, setGdriveModalType] = useState<'beatmap' | 'skin' | null>(null);
+  const [gdriveInputLink, setGdriveInputLink] = useState<string>('');
+  const [gdriveResolving, setGdriveResolving] = useState<boolean>(false);
+  const [gdriveResolvedId, setGdriveResolvedId] = useState<string>('');
+  const [gdriveResolvedType, setGdriveResolvedType] = useState<'folder' | 'file'>('folder');
+  const [gdriveResolvedName, setGdriveResolvedName] = useState<string>('');
+  const [gdriveCustomName, setGdriveCustomName] = useState<string>('');
+  const [gdriveResolvedFiles, setGdriveResolvedFiles] = useState<any[]>([]);
+  const [gdriveError, setGdriveError] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [gdriveImportingId, setGdriveImportingId] = useState<string | null>(null);
+  
   const skinsSectionRef = useRef<HTMLDivElement>(null);
   const [pendingDeleteSkin, setPendingDeleteSkin] = useState<string | null>(null);
   const skinLongPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const skinCancelDeleteTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [showInputSetup, setShowInputSetup] = useState(!settings.inputDevice);
 
   const [cloningModalState, setCloningModalState] = useState<'closed' | 'initial' | 'select_map' | 'change_something' | 'beatmap_library' | 'skin_library' | 'beatmaps_menu' | 'skins_menu'>('closed');
   const [importMode, setImportMode] = useState<'any' | 'beatmap' | 'skin'>('any');
@@ -63,6 +121,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
 
   const [showIntroBeatmapPicker, setShowIntroBeatmapPicker] = useState<boolean>(false);
   const [showIntroEditor, setShowIntroEditor] = useState<boolean>(false);
+  const [showBeatmapEditor, setShowBeatmapEditor] = useState<boolean>(false);
 
   useEffect(() => {
     onIntroEditorToggle?.(showIntroEditor);
@@ -405,6 +464,204 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
     }
   };
 
+  const handleResolveGDriveLink = async (url: string) => {
+    if (!url) return;
+    setGdriveError(null);
+    setGdriveResolvedFiles([]);
+    setGdriveResolvedName('');
+    setGdriveCustomName('');
+    setGdriveResolving(true);
+
+    try {
+      let currentToken = gdriveToken;
+      if (!currentToken) {
+        const res = await googleSignIn();
+        if (res) {
+          currentToken = res.accessToken;
+          setUser(res.user);
+          setGdriveToken(res.accessToken);
+        } else {
+          throw new Error('Google-Anmeldung erforderlich.');
+        }
+      }
+
+      if (!currentToken) {
+        throw new Error('Fehler bei der Google-Anmeldung.');
+      }
+
+      const parsed = parseGoogleDriveUrl(url);
+      if (!parsed) {
+        throw new Error('Ungültiger Google Drive Link. Bitte gib einen Ordner- oder Datei-Link an.');
+      }
+
+      setGdriveResolvedId(parsed.id);
+      setGdriveResolvedType(parsed.type);
+
+      const meta = await fetchDriveMetadata(parsed.id, currentToken);
+      setGdriveResolvedName(meta.name);
+      setGdriveCustomName(meta.name);
+
+      if (parsed.type === 'folder') {
+        const files = await listDriveFolderFiles(parsed.id, currentToken);
+        const category = gdriveModalType;
+        const allowedExtensions = category === 'beatmap' ? ['.osz', '.zip'] : ['.osk'];
+        const filtered = files.filter(f => 
+          allowedExtensions.some(ext => f.name.toLowerCase().endsWith(ext))
+        );
+
+        if (filtered.length === 0) {
+          throw new Error(`Keine passenden Dateien (${category === 'beatmap' ? '.osz, .zip' : '.osk'}) in diesem Ordner gefunden.`);
+        }
+
+        setGdriveResolvedFiles(filtered);
+      } else {
+        const category = gdriveModalType;
+        const allowedExtensions = category === 'beatmap' ? ['.osz', '.zip'] : ['.osk'];
+        const isAllowed = allowedExtensions.some(ext => meta.name.toLowerCase().endsWith(ext));
+        if (!isAllowed) {
+          throw new Error(`Die ausgewählte Datei ist keine gültige Datei für diese Bibliothek (${category === 'beatmap' ? '.osz, .zip' : '.osk'}).`);
+        }
+        setGdriveResolvedFiles([meta]);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setGdriveError(err.message || 'Verbindung zu Google Drive fehlgeschlagen.');
+    } finally {
+      setGdriveResolving(false);
+    }
+  };
+
+  const handleAddGDriveCollection = () => {
+    if (!gdriveResolvedId || !gdriveModalType) return;
+    const collectionName = gdriveCustomName.trim() || gdriveResolvedName || 'Unbenannte Sammlung';
+
+    const exists = gdriveLinks.some(l => l.gdriveId === gdriveResolvedId && l.category === gdriveModalType);
+    if (exists) {
+      setErrorMsg('Diese Sammlung wurde bereits hinzugefügt!');
+      return;
+    }
+
+    const newLink = {
+      id: `${gdriveModalType}_${gdriveResolvedId}_${Date.now()}`,
+      url: gdriveInputLink,
+      gdriveId: gdriveResolvedId,
+      type: gdriveResolvedType,
+      category: gdriveModalType,
+      name: collectionName,
+      files: gdriveResolvedFiles.map(f => ({
+        id: f.id,
+        name: f.name,
+        size: f.size,
+        status: 'pending'
+      }))
+    };
+
+    setGdriveLinks(prev => [...prev, newLink]);
+
+    setGdriveInputLink('');
+    setGdriveResolvedId('');
+    setGdriveResolvedName('');
+    setGdriveCustomName('');
+    setGdriveResolvedFiles([]);
+    setGdriveModalType(null);
+  };
+
+  const handleDeleteGDriveLink = (id: string) => {
+    const confirmed = window.confirm('Möchtest du diese Google Drive Verknüpfung wirklich löschen? Die importierten Dateien bleiben in der lokalen Datenbank erhalten.');
+    if (!confirmed) return;
+    setGdriveLinks(prev => prev.filter(l => l.id !== id));
+  };
+
+  const handleImportGDriveFile = async (fileId: string, fileName: string, category: 'beatmap' | 'skin') => {
+    let currentToken = gdriveToken;
+    if (!currentToken) {
+      try {
+        const res = await googleSignIn();
+        if (res) {
+          currentToken = res.accessToken;
+          setUser(res.user);
+          setGdriveToken(res.accessToken);
+        } else {
+          throw new Error('Google-Anmeldung erforderlich.');
+        }
+      } catch (err: any) {
+        setErrorMsg('Bitte melde dich an, um von Google Drive herunterzuladen.');
+        return;
+      }
+    }
+
+    if (!currentToken) return;
+
+    setGdriveImportingId(fileId);
+    setIsLoading(true);
+    setLoadingStep(`Lade ${fileName} herunter...`);
+
+    try {
+      const blob = await downloadDriveFileBlob(fileId, currentToken);
+      const file = new File([blob], fileName);
+      await processOszFile(file, category);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(`Fehler beim Herunterladen von "${fileName}": ${err.message}`);
+    } finally {
+      setGdriveImportingId(null);
+      setIsLoading(false);
+    }
+  };
+
+  const handleImportAllCollectionFiles = async (collectionId: string) => {
+    const collection = gdriveLinks.find(l => l.id === collectionId);
+    if (!collection) return;
+
+    let currentToken = gdriveToken;
+    if (!currentToken) {
+      try {
+        const res = await googleSignIn();
+        if (res) {
+          currentToken = res.accessToken;
+          setUser(res.user);
+          setGdriveToken(res.accessToken);
+        } else {
+          throw new Error('Google-Anmeldung erforderlich.');
+        }
+      } catch (err: any) {
+        setErrorMsg('Bitte melde dich an, um von Google Drive herunterzuladen.');
+        return;
+      }
+    }
+
+    if (!currentToken) return;
+
+    setIsLoading(true);
+    
+    try {
+      const filesToDownload = collection.files;
+      let count = 0;
+      for (const file of filesToDownload) {
+        const isImported = collection.category === 'beatmap' 
+          ? mapGroups.some(g => g.fileName === file.name)
+          : kompliSkins.some(s => s.name === file.name.replace(/\.osk$/i, ''));
+        
+        if (isImported) continue;
+
+        count++;
+        setLoadingStep(`[${count}/${filesToDownload.length}] Downloade ${file.name}...`);
+        const blob = await downloadDriveFileBlob(file.id, currentToken);
+        const fileObj = new File([blob], file.name);
+        await processOszFile(fileObj, collection.category);
+      }
+      
+      if (count === 0) {
+        setErrorMsg('Alle Dateien in dieser Sammlung sind bereits importiert.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(`Fehler beim Herunterladen der Sammlung: ${err.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const playBeatmap = async (gIdx: number, vIdx: number) => {
     if (!settings.skinPreset) {
       setErrorMsg('Kein Skin ausgewählt! Bitte öffne die Einstellungen (Zahnrad-Symbol oben rechts) und wähle einen Kompli-Skin aus.');
@@ -577,6 +834,172 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
         (g.creator && g.creator.toLowerCase().includes(q))
       );
     });
+
+  const getBeatmapGroups = () => {
+    const groups: { id: string; name: string; isCollapsible: boolean; items: any[] }[] = [];
+
+    // 1. Google Drive folder collections (that have > 1 file)
+    const gdriveFolders = gdriveLinks.filter(l => l.category === 'beatmap' && l.type === 'folder' && l.files.length > 1);
+    for (const folder of gdriveFolders) {
+      groups.push({
+        id: folder.id,
+        name: folder.name,
+        isCollapsible: true,
+        items: folder.files.map((f: any) => ({
+          id: f.id,
+          name: f.name,
+          isGDrive: true,
+          collectionId: folder.id,
+          isImported: mapGroups.some(g => g.fileName === f.name)
+        }))
+      });
+    }
+
+    // 2. The "Andere" group
+    const otherItems: any[] = [];
+
+    // Add built-in local maps
+    Object.entries(localBeatmapUrls).forEach(([path, url]) => {
+      const filename = path.split('/').pop() || '';
+      otherItems.push({
+        name: filename,
+        url,
+        isGDrive: false,
+        isImported: mapGroups.some(g => g.fileName === filename)
+      });
+    });
+
+    // Add Google Drive single-file links, or folders with <= 1 file
+    const singleGDriveLinks = gdriveLinks.filter(l => l.category === 'beatmap' && (l.type === 'file' || l.files.length <= 1));
+    for (const link of singleGDriveLinks) {
+      for (const f of link.files) {
+        if (!otherItems.some(item => item.name === f.name)) {
+          otherItems.push({
+            id: f.id,
+            name: f.name,
+            isGDrive: true,
+            collectionId: link.id,
+            isImported: mapGroups.some(g => g.fileName === f.name)
+          });
+        }
+      }
+    }
+
+    // Add any custom imported maps that are not built-in and not in any Google Drive folder
+    for (const g of mapGroups) {
+      if (!g.fileName) continue;
+      const isBuiltIn = Object.keys(localBeatmapUrls).some(k => k.endsWith(g.fileName!));
+      const isInGDrive = gdriveLinks.some(l => l.category === 'beatmap' && l.files.some((f: any) => f.name === g.fileName));
+      if (!isBuiltIn && !isInGDrive) {
+        otherItems.push({
+          name: g.fileName,
+          isGDrive: false,
+          isImported: true,
+          importedOnly: true
+        });
+      }
+    }
+
+    groups.push({
+      id: 'andere',
+      name: 'Andere',
+      isCollapsible: true,
+      items: otherItems
+    });
+
+    return groups;
+  };
+
+  const getSkinGroups = () => {
+    const groups: { id: string; name: string; isCollapsible: boolean; items: any[] }[] = [];
+
+    // 1. Google Drive folder collections (that have > 1 file)
+    const gdriveFolders = gdriveLinks.filter(l => l.category === 'skin' && l.type === 'folder' && l.files.length > 1);
+    for (const folder of gdriveFolders) {
+      groups.push({
+        id: folder.id,
+        name: folder.name,
+        isCollapsible: true,
+        items: folder.files.map((f: any) => {
+          const skinName = f.name.replace(/\.osk$/i, '');
+          return {
+            id: f.id,
+            name: f.name,
+            skinName,
+            isGDrive: true,
+            collectionId: folder.id,
+            isImported: kompliSkins.some(s => s.name === skinName)
+          };
+        })
+      });
+    }
+
+    // 2. The "Andere" group
+    const otherItems: any[] = [];
+
+    // Add built-in skins
+    Object.entries(localSkinUrls).forEach(([path, url]) => {
+      const filename = path.split('/').pop() || '';
+      const skinName = filename.replace(/\.osk$/i, '');
+      otherItems.push({
+        name: filename,
+        skinName,
+        url,
+        isGDrive: false,
+        isImported: kompliSkins.some(s => s.name === skinName)
+      });
+    });
+
+    // Add Google Drive single-file links, or folder links with <= 1 file
+    const singleGDriveLinks = gdriveLinks.filter(l => l.category === 'skin' && (l.type === 'file' || l.files.length <= 1));
+    for (const link of singleGDriveLinks) {
+      for (const f of link.files) {
+        const skinName = f.name.replace(/\.osk$/i, '');
+        if (!otherItems.some(item => item.name === f.name)) {
+          otherItems.push({
+            id: f.id,
+            name: f.name,
+            skinName,
+            isGDrive: true,
+            collectionId: link.id,
+            isImported: kompliSkins.some(s => s.name === skinName)
+          });
+        }
+      }
+    }
+
+    // Add any custom skins that are imported only (not in localSkinUrls or GDrive)
+    for (const s of kompliSkins) {
+      const filename = `${s.name}.osk`;
+      const isBuiltIn = Object.keys(localSkinUrls).some(k => k.endsWith(filename));
+      const isInGDrive = gdriveLinks.some(l => l.category === 'skin' && l.files.some((f: any) => f.name.replace(/\.osk$/i, '') === s.name));
+      if (!isBuiltIn && !isInGDrive) {
+        otherItems.push({
+          name: filename,
+          skinName: s.name,
+          isGDrive: false,
+          isImported: true,
+          importedOnly: true
+        });
+      }
+    }
+
+    groups.push({
+      id: 'andere',
+      name: 'Andere',
+      isCollapsible: true,
+      items: otherItems
+    });
+
+    return groups;
+  };
+
+  const toggleGroupCollapse = (groupId: string) => {
+    setCollapsedGroups(prev => ({
+      ...prev,
+      [groupId]: !prev[groupId]
+    }));
+  };
 
   const activeGroup = mapGroups[selectedGroupIdx];
   const activeVersion = activeGroup ? activeGroup.versions[selectedVersionIdx] : null;
@@ -1048,14 +1471,23 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               </div>
 
               {/* Start Game Action Button - Massive custom neon style! */}
-              <button
-                id="btn-start-playing"
-                onClick={handleStartPlay}
-                className="w-full py-4 bg-gradient-to-r from-[#00CFFF] via-[#00E8FF] to-[#FF88CC] hover:from-[#ff55a3] hover:to-[#ffa6db] active:scale-[0.98] font-black text-xl italic tracking-tight rounded-sm flex items-center justify-center gap-3 text-white shadow-[0_0_35px_rgba(0,187,255,0.45)] hover:shadow-[0_0_45px_rgba(0,187,255,0.6)] transition-all relative z-10 cursor-pointer uppercase border-t border-white/20 duration-200"
-              >
-                <Play className="w-6 h-6 fill-white text-white" />
-                <span className="font-extrabold tracking-wider drop-shadow-md">LET&apos;S GO (PLAY)</span>
-              </button>
+              <div className="flex flex-col gap-2">
+                <button
+                  id="btn-start-playing"
+                  onClick={handleStartPlay}
+                  className="w-full py-4 bg-gradient-to-r from-[#00CFFF] via-[#00E8FF] to-[#FF88CC] hover:from-[#ff55a3] hover:to-[#ffa6db] active:scale-[0.98] font-black text-xl italic tracking-tight rounded-sm flex items-center justify-center gap-3 text-white shadow-[0_0_35px_rgba(0,187,255,0.45)] hover:shadow-[0_0_45px_rgba(0,187,255,0.6)] transition-all relative z-10 cursor-pointer uppercase border-t border-white/20 duration-200"
+                >
+                  <Play className="w-6 h-6 fill-white text-white" />
+                  <span className="font-extrabold tracking-wider drop-shadow-md">LET&apos;S GO (PLAY)</span>
+                </button>
+                <button
+                  onClick={() => { setShowBeatmapEditor(true); if (onEditorToggle) onEditorToggle(true); }}
+                  className="w-full py-3 bg-[#1a1a1a] hover:bg-[#222] border border-white/10 font-bold text-sm tracking-widest rounded-sm flex items-center justify-center gap-2 text-gray-300 transition-colors uppercase"
+                >
+                  <Settings size={18} />
+                  Beatmap Editor (lazer)
+                </button>
+              </div>
 
             </div>
           ) : (
@@ -1087,6 +1519,8 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
             </div>
 
             <div className="flex flex-col gap-5 flex-1">
+              <InputDeviceSelector settings={settings} onUpdateSettings={onUpdateSettings} />
+
               {/* Game Mode Option (visible especially on mobile where top bar misses it) */}
               <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
                 <div>
@@ -1387,63 +1821,7 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               </div>
 
                {/* Keyboard option Z / X */}
-              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
-                <div>
-                  <h4 className="font-semibold text-white">Tastatursteuerung</h4>
-                  <p className="text-xs text-gray-400 mt-0.5">Erlaube X/Y/Z-Tastendrücke für Klicks (unterstützt QWERTZ & QWERTY)</p>
-                </div>
-                <button
-                  id="btn-toggle-keyboard"
-                  onClick={() => toggleSettingBool('useKeyboard')}
-                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
-                    settings.useKeyboard ? 'bg-[#00E8FF] shadow-[0_0_10px_rgba(0,232,255,0.4)]' : 'bg-white/10'
-                  }`}
-                  disabled={settings.disableClicking}
-                  style={settings.disableClicking ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-                >
-                  <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
-                    settings.useKeyboard ? 'right-1' : 'left-1'
-                  }`} />
-                </button>
-              </div>
 
-              {/* Disable Clicks during Gameplay option */}
-              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
-                <div>
-                  <h4 className="font-semibold text-white">Tippen / Klicks im Spiel deaktivieren</h4>
-                  <p className="text-xs text-gray-400 mt-0.5">Deaktiviert Mausklicks/Taps für Hits auf Kreise. Aim per Pointer weiterhin aktiv. Erfordert Tastatursteuerung.</p>
-                </div>
-                <button
-                  id="btn-toggle-disable-clicking"
-                  onClick={() => toggleSettingBool('disableClicking')}
-                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
-                    settings.disableClicking ? 'bg-[#00E8FF] shadow-[0_0_10px_rgba(0,232,255,0.4)]' : 'bg-white/10'
-                  }`}
-                >
-                  <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
-                    settings.disableClicking ? 'right-1' : 'left-1'
-                  }`} />
-                </button>
-              </div>
-
-              {/* Mobil-Modus option */}
-              <div className="flex items-center justify-between bg-white/[0.01] border border-white/5 rounded-sm p-4">
-                <div>
-                  <h4 className="font-semibold text-white">Mobil-Modus / Touch-Zonen</h4>
-                  <p className="text-xs text-gray-400 mt-0.5">Aktiviert großzügige Touch-Hitboxen und zeigt visuelle Tipp-Zonen an. Wenn aus, ist das Spiel für Desktop (Maus & Tastatur) mit hochpräzisen Hitboxen, Tasten-Overlays und einem interaktiven Custom-Cursor optimiert.</p>
-                </div>
-                <button
-                  id="btn-toggle-touch-controls"
-                  onClick={() => toggleSettingBool('touchControls')}
-                  className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer [outline:none] ${
-                    settings.touchControls ? 'bg-[#00E8FF] shadow-[0_0_10px_rgba(0,232,255,0.4)]' : 'bg-white/10'
-                  }`}
-                >
-                  <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform ${
-                    settings.touchControls ? 'right-1' : 'left-1'
-                  }`} />
-                </button>
-              </div>
 
               {/* Kompli-Skins */}
               <div ref={skinsSectionRef} className="flex flex-col bg-[#111118] border border-white/5 rounded-sm p-4 gap-3">
@@ -1776,41 +2154,149 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
               </div>
             )}
 
+            {gdriveModalType && (
+              <div className="flex flex-col gap-4">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Globe className="text-emerald-400" size={24} />
+                    {gdriveModalType === 'beatmap' ? 'Beatmap' : 'Skin'} Sammlung importieren
+                  </h3>
+                  <button onClick={() => setGdriveModalType(null)} className="text-gray-400 hover:text-white">
+                    <X size={20} />
+                  </button>
+                </div>
+                
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label className="text-xs text-gray-400 uppercase font-bold tracking-wider mb-1 block">Google Drive Link</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={gdriveInputLink}
+                        onChange={(e) => setGdriveInputLink(e.target.value)}
+                        placeholder="https://drive.google.com/..." 
+                        className="flex-1 bg-black/50 border border-white/10 rounded p-2 text-sm text-white"
+                      />
+                      <button 
+                        onClick={() => handleResolveGDriveLink(gdriveInputLink)}
+                        disabled={gdriveResolving || !gdriveInputLink}
+                        className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-bold px-3 py-2 rounded text-sm transition-colors"
+                      >
+                        {gdriveResolving ? <Loader size={16} className="animate-spin" /> : 'Prüfen'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {gdriveError && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded">
+                      {gdriveError}
+                    </div>
+                  )}
+
+                  {gdriveResolvedFiles.length > 0 && (
+                    <div className="flex flex-col gap-3 mt-2 border-t border-white/10 pt-4">
+                      <div>
+                        <label className="text-xs text-gray-400 uppercase font-bold tracking-wider mb-1 block">Name der Sammlung (Optional)</label>
+                        <input 
+                          type="text" 
+                          value={gdriveCustomName}
+                          onChange={(e) => setGdriveCustomName(e.target.value)}
+                          placeholder={gdriveResolvedName} 
+                          className="w-full bg-black/50 border border-white/10 rounded p-2 text-sm text-white"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2 block">
+                          Vorschau ({gdriveResolvedFiles.length} Dateien gefunden)
+                        </label>
+                        <div className="bg-black/30 border border-white/5 rounded p-2 flex flex-col gap-1 max-h-[120px] overflow-y-auto custom-scrollbar">
+                          {gdriveResolvedFiles.slice(0, 3).map(f => (
+                            <div key={f.id} className="text-sm text-gray-300 truncate">📄 {f.name}</div>
+                          ))}
+                          {gdriveResolvedFiles.length > 3 && (
+                            <div className="text-xs text-gray-500 italic mt-1">+ {gdriveResolvedFiles.length - 3} weitere...</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={handleAddGDriveCollection}
+                        className="w-full mt-2 py-3 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-white rounded font-extrabold shadow-[0_0_15px_rgba(52,211,153,0.3)] transition-transform hover:scale-[1.02] text-sm uppercase"
+                      >
+                        Sammlung hinzufügen
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {cloningModalState === 'beatmap_library' && (
               <div className="flex flex-col gap-4">
-                <h3 className="text-xl font-bold text-white mb-2">Beatmap Library</h3>
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-xl font-bold text-white">Beatmap Library</h3>
+                  <button onClick={() => setGdriveModalType('beatmap')} className="w-8 h-8 rounded-full bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-400 flex items-center justify-center transition-colors">
+                    <Plus size={18} />
+                  </button>
+                </div>
                 <div className="flex flex-col gap-3 max-h-[50vh] overflow-y-auto custom-scrollbar pr-2">
-                  {Object.entries(localBeatmapUrls).map(([path, url]) => {
-                    const filename = path.split('/').pop() || '';
-                    const isImported = mapGroups.some(g => g.fileName === filename);
-                    
-                    return (
-                      <div key={path} className="flex items-center justify-between bg-white/5 border border-white/5 p-3 rounded">
-                        <div className="font-bold text-white truncate max-w-[200px]" title={filename}>{filename}</div>
-                        {isImported ? (
-                          <button
-                            onClick={async () => {
-                              await deleteOszFile(filename);
-                              setMapGroups(prev => prev.filter(g => g.fileName !== filename));
-                            }}
-                            className="p-2 rounded bg-red-500/20 border border-red-500/30 text-red-400 font-bold text-xs hover:bg-red-500/30 transition-colors"
-                          >
-                            Löschen
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => importFromLibrary(url, false)}
-                            className="bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-white rounded py-2 px-4 font-extrabold shadow-[0_0_15px_rgba(52,211,153,0.3)] transition-transform hover:scale-105 text-xs uppercase"
-                          >
-                            Hinzufügen
+                  {getBeatmapGroups().map(group => (
+                    <div key={group.id} className="flex flex-col gap-2">
+                      <div 
+                        className="flex items-center justify-between bg-black/40 p-2 rounded cursor-pointer"
+                        onClick={() => toggleGroupCollapse(group.id)}
+                      >
+                        <div className="flex items-center gap-2">
+                          {collapsedGroups[group.id] ? <ChevronRight size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                          <span className="font-bold text-gray-300">{group.name}</span>
+                        </div>
+                        {group.id !== 'andere' && (
+                          <button onClick={(e) => { e.stopPropagation(); handleDeleteGDriveLink(group.id); }} className="text-red-400 hover:text-red-300 p-1">
+                            <Trash2 size={14} />
                           </button>
                         )}
                       </div>
-                    );
-                  })}
-                  {Object.keys(localBeatmapUrls).length === 0 && (
-                    <div className="text-gray-400 text-sm text-center py-4">Keine lokalen Beatmaps gefunden.</div>
-                  )}
+                      {!collapsedGroups[group.id] && (
+                        <div className="flex flex-col gap-2 pl-4">
+                          {group.id !== 'andere' && group.items.some((i: any) => !i.isImported) && (
+                            <button
+                              onClick={() => handleImportAllCollectionFiles(group.id)}
+                              className="self-start text-xs font-bold text-emerald-400 hover:text-emerald-300 py-1"
+                            >
+                              Alle fehlenden importieren
+                            </button>
+                          )}
+                          {group.items.map((item: any) => (
+                            <div key={item.name} className="flex items-center justify-between bg-white/5 border border-white/5 p-2 rounded">
+                              <div className="font-bold text-white truncate max-w-[150px] text-sm" title={item.name}>{item.name}</div>
+                              {item.isImported ? (
+                                <button
+                                  onClick={async () => {
+                                    await deleteOszFile(item.name);
+                                    setMapGroups(prev => prev.filter(g => g.fileName !== item.name));
+                                  }}
+                                  className="p-1.5 rounded bg-red-500/20 border border-red-500/30 text-red-400 font-bold text-[10px] hover:bg-red-500/30 transition-colors"
+                                >
+                                  Löschen
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => item.isGDrive ? handleImportGDriveFile(item.id, item.name, 'beatmap') : importFromLibrary(item.url, false)}
+                                  className="bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-white rounded py-1.5 px-3 font-extrabold shadow-[0_0_15px_rgba(52,211,153,0.3)] transition-transform hover:scale-105 text-[10px] uppercase"
+                                >
+                                  Hinzufügen
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          {group.items.length === 0 && (
+                            <div className="text-xs text-gray-500 italic py-1">Keine Elemente</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
                 <button 
                   onClick={() => setCloningModalState('beatmaps_menu')}
@@ -1823,40 +2309,69 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
 
             {cloningModalState === 'skin_library' && (
               <div className="flex flex-col gap-4">
-                <h3 className="text-xl font-bold text-white mb-2">Skin Library</h3>
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-xl font-bold text-white">Skin Library</h3>
+                  <button onClick={() => setGdriveModalType('skin')} className="w-8 h-8 rounded-full bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-400 flex items-center justify-center transition-colors">
+                    <Plus size={18} />
+                  </button>
+                </div>
                 <div className="flex flex-col gap-3 max-h-[50vh] overflow-y-auto custom-scrollbar pr-2">
-                  {Object.entries(localSkinUrls).map(([path, url]) => {
-                    const filename = path.split('/').pop() || '';
-                    const skinName = filename.replace(/\.osk$/i, '');
-                    const isImported = kompliSkins.some(s => s.name === skinName);
-                    
-                    return (
-                      <div key={path} className="flex items-center justify-between bg-white/5 border border-white/5 p-3 rounded">
-                        <div className="font-bold text-white truncate max-w-[200px]" title={filename}>{filename}</div>
-                        {isImported ? (
-                          <button
-                            onClick={async () => {
-                              await deleteKompliSkin(skinName);
-                              setKompliSkins(prev => prev.filter(s => s.name !== skinName));
-                            }}
-                            className="p-2 rounded bg-red-500/20 border border-red-500/30 text-red-400 font-bold text-xs hover:bg-red-500/30 transition-colors"
-                          >
-                            Löschen
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => importFromLibrary(url, true)}
-                            className="bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-white rounded py-2 px-4 font-extrabold shadow-[0_0_15px_rgba(52,211,153,0.3)] transition-transform hover:scale-105 text-xs uppercase"
-                          >
-                            Hinzufügen
+                  {getSkinGroups().map(group => (
+                    <div key={group.id} className="flex flex-col gap-2">
+                      <div 
+                        className="flex items-center justify-between bg-black/40 p-2 rounded cursor-pointer"
+                        onClick={() => toggleGroupCollapse(group.id)}
+                      >
+                        <div className="flex items-center gap-2">
+                          {collapsedGroups[group.id] ? <ChevronRight size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                          <span className="font-bold text-gray-300">{group.name}</span>
+                        </div>
+                        {group.id !== 'andere' && (
+                          <button onClick={(e) => { e.stopPropagation(); handleDeleteGDriveLink(group.id); }} className="text-red-400 hover:text-red-300 p-1">
+                            <Trash2 size={14} />
                           </button>
                         )}
                       </div>
-                    );
-                  })}
-                  {Object.keys(localSkinUrls).length === 0 && (
-                    <div className="text-gray-400 text-sm text-center py-4">Keine lokalen Skins gefunden.</div>
-                  )}
+                      {!collapsedGroups[group.id] && (
+                        <div className="flex flex-col gap-2 pl-4">
+                          {group.id !== 'andere' && group.items.some((i: any) => !i.isImported) && (
+                            <button
+                              onClick={() => handleImportAllCollectionFiles(group.id)}
+                              className="self-start text-xs font-bold text-emerald-400 hover:text-emerald-300 py-1"
+                            >
+                              Alle fehlenden importieren
+                            </button>
+                          )}
+                          {group.items.map((item: any) => (
+                            <div key={item.name} className="flex items-center justify-between bg-white/5 border border-white/5 p-2 rounded">
+                              <div className="font-bold text-white truncate max-w-[150px] text-sm" title={item.name}>{item.name}</div>
+                              {item.isImported ? (
+                                <button
+                                  onClick={async () => {
+                                    await deleteKompliSkin(item.skinName);
+                                    setKompliSkins(prev => prev.filter(s => s.name !== item.skinName));
+                                  }}
+                                  className="p-1.5 rounded bg-red-500/20 border border-red-500/30 text-red-400 font-bold text-[10px] hover:bg-red-500/30 transition-colors"
+                                >
+                                  Löschen
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => item.isGDrive ? handleImportGDriveFile(item.id, item.name, 'skin') : importFromLibrary(item.url, true)}
+                                  className="bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-white rounded py-1.5 px-3 font-extrabold shadow-[0_0_15px_rgba(52,211,153,0.3)] transition-transform hover:scale-105 text-[10px] uppercase"
+                                >
+                                  Hinzufügen
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          {group.items.length === 0 && (
+                            <div className="text-xs text-gray-500 italic py-1">Keine Elemente</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
                 <button 
                   onClick={() => setCloningModalState('skins_menu')}
@@ -2008,6 +2523,14 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
         </div>
       )}
 
+      {showBeatmapEditor && activeGroup && (
+        <BeatmapEditor
+          group={activeGroup}
+          versionIdx={selectedVersionIdx}
+          onClose={() => { setShowBeatmapEditor(false); if (onEditorToggle) onEditorToggle(false); }}
+        />
+      )}
+
       {showIntroEditor && (() => {
         const selectedCustomIntroGroup = mapGroups.find(g => g.fileName === settings.customIntroBeatmapId || g.versions.some(v => v.id === settings.customIntroBeatmapId));
         if (!selectedCustomIntroGroup) return null;
@@ -2026,6 +2549,32 @@ export const BeatmapSelector: React.FC<BeatmapSelectorProps> = ({
           />
         );
       })()}
+
+      {/* Initial Input Device Setup Modal */}
+      {showInputSetup && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+          <div className="bg-[#14141A] border border-white/10 rounded-xl p-8 max-w-2xl w-full shadow-2xl animate-in fade-in zoom-in duration-300">
+            <h2 className="text-2xl font-bold text-white mb-2 text-center">Willkommen! Wie spielst du?</h2>
+            <p className="text-gray-400 text-sm text-center mb-8">Wähle dein bevorzugtes Eingabegerät. Du kannst dies später jederzeit in den Einstellungen ändern.</p>
+            
+            <InputDeviceSelector 
+              settings={settings} 
+              onUpdateSettings={(s) => {
+                onUpdateSettings(s);
+              }} 
+            />
+            
+            <div className="mt-8 flex justify-center">
+              <button
+                onClick={() => setShowInputSetup(false)}
+                className="px-8 py-3 bg-[#00E8FF] hover:bg-[#00E8FF]/80 text-black font-bold rounded-full transition-all shadow-[0_0_15px_rgba(0,232,255,0.4)]"
+              >
+                Bestätigen & Loslegen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

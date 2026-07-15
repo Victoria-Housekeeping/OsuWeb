@@ -918,13 +918,7 @@ export function IntroAndStartScreen({
 
       {/* PHASE 1: BLACK AUTO-PLAY CARRIER */}
       {phase === 'black_waiting_for_click' && (
-        <div className={`absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-50 ${(hasCustomVideo || hasCustomGif || hasCustomLoopVideo) && customIntroConfig?.videoPlayBeforeTap ? 'bg-black/40' : 'bg-black'}`}>
-          {(hasCustomVideo || hasCustomGif || hasCustomLoopVideo) && customIntroConfig?.videoPlayBeforeTap && (
-            <span className="text-white/60 font-bold tracking-widest uppercase text-sm mb-8 animate-pulse drop-shadow-md">
-              Tap to start
-            </span>
-          )}
-        </div>
+        <div className={`absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-50 ${(hasCustomVideo || hasCustomGif || hasCustomLoopVideo) && customIntroConfig?.videoPlayBeforeTap ? 'bg-black/40' : 'bg-black'}`} />
       )}
 
       {/* SYNTHESIZED INTRO SCREEN (RECREATED), or the custom intro beatmap's overlay */}

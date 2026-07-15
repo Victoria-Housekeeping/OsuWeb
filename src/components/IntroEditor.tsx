@@ -333,21 +333,27 @@ export function IntroEditor({ group, onClose, onSave, settings }: IntroEditorPro
       return;
     }
 
-    // Otherwise, check if current time is close to startOffset or titleScreenAt, and clear them
+    // Otherwise, check if current time is close to startOffset, logoAppearAt or titleScreenAt, and clear them
     const currentTimeMs = Math.round(currentTime * 1000);
     const startDiff = Math.abs(config.audioStartOffset - currentTimeMs);
     const titleDiff = config.titleScreenAt !== null ? Math.abs(config.titleScreenAt - currentTimeMs) : Infinity;
+    const logoDiff = config.logoAppearAt !== null ? Math.abs(config.logoAppearAt - currentTimeMs) : Infinity;
 
-    if (startDiff < 2000 && startDiff < titleDiff) {
+    if (startDiff < 2000 && startDiff < titleDiff && startDiff < logoDiff) {
       const newConfig = { ...config, audioStartOffset: 0 };
       pushHistory(newConfig);
       setHasExplicitStartOffset(false);
       setStatusMsg('Post-Tap Startzeitpunkt zurückgesetzt!');
       setTimeout(() => setStatusMsg(null), 2000);
-    } else if (titleDiff < 2000) {
+    } else if (titleDiff < 2000 && titleDiff < logoDiff) {
       const newConfig = { ...config, titleScreenAt: null };
       pushHistory(newConfig);
       setStatusMsg('Titelbildschirm-Wechsel zurückgesetzt!');
+      setTimeout(() => setStatusMsg(null), 2000);
+    } else if (logoDiff < 2000) {
+      const newConfig = { ...config, logoAppearAt: null };
+      pushHistory(newConfig);
+      setStatusMsg('Logo-Erscheinen zurückgesetzt!');
       setTimeout(() => setStatusMsg(null), 2000);
     }
   };
@@ -921,6 +927,108 @@ export function IntroEditor({ group, onClose, onSave, settings }: IntroEditorPro
             )}
           </div>
 
+          {/* ABLAUF-ZEITPUNKTE */}
+          <div className="bg-black/20 rounded p-3 border border-white/5 flex flex-col gap-2">
+            <h3 className="text-xs font-black tracking-widest text-[#00E8FF] uppercase mb-1">ABLAUF-ZEITPUNKTE</h3>
+            
+            {/* Post-Tap Startzeitpunkt */}
+            <div className="flex flex-col gap-1 text-xs border-b border-white/5 pb-2">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-300 text-[11px]">Start nach Tap (Post-Tap)</span>
+                <span className="font-mono text-[11px] text-fuchsia-400">
+                  {formatTime(config.audioStartOffset / 1000)}
+                </span>
+              </div>
+              <div className="flex gap-1.5 mt-1 justify-end">
+                <button
+                  onClick={handleSetStartOffset}
+                  className="text-[9px] uppercase font-bold text-[#00E8FF] bg-[#00E8FF]/10 px-2 py-1 rounded border border-[#00E8FF]/20 hover:bg-[#00E8FF]/20"
+                >
+                  Hier setzen
+                </button>
+                {config.audioStartOffset > 0 && (
+                  <button
+                    onClick={() => {
+                      const newConfig = { ...config, audioStartOffset: 0 };
+                      pushHistory(newConfig);
+                      setHasExplicitStartOffset(false);
+                      setStatusMsg('Post-Tap Startzeitpunkt zurückgesetzt!');
+                      setTimeout(() => setStatusMsg(null), 1500);
+                    }}
+                    className="text-[9px] uppercase font-bold text-red-400 bg-red-500/10 px-2 py-1 rounded border border-red-500/20 hover:bg-red-500/20"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Logo erscheint */}
+            <div className="flex flex-col gap-1 text-xs border-b border-white/5 pb-2">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-300 text-[11px]">Logo erscheint</span>
+                <span className="font-mono text-[11px] text-yellow-400">
+                  {config.logoAppearAt !== null ? formatTime(config.logoAppearAt / 1000) : 'Nicht gesetzt'}
+                </span>
+              </div>
+              <div className="flex gap-1.5 mt-1 justify-end">
+                <button
+                  onClick={() => {
+                    const currentTimeMs = Math.round(currentTime * 1000);
+                    pushHistory({ ...config, logoAppearAt: currentTimeMs });
+                    setStatusMsg('Logo-Erscheinen gesetzt!');
+                    setTimeout(() => setStatusMsg(null), 1500);
+                  }}
+                  className="text-[9px] uppercase font-bold text-[#00E8FF] bg-[#00E8FF]/10 px-2 py-1 rounded border border-[#00E8FF]/20 hover:bg-[#00E8FF]/20"
+                >
+                  Hier setzen
+                </button>
+                {config.logoAppearAt !== null && (
+                  <button
+                    onClick={() => {
+                      pushHistory({ ...config, logoAppearAt: null });
+                      setStatusMsg('Logo-Erscheinen zurückgesetzt!');
+                      setTimeout(() => setStatusMsg(null), 1500);
+                    }}
+                    className="text-[9px] uppercase font-bold text-red-400 bg-red-500/10 px-2 py-1 rounded border border-red-500/20 hover:bg-red-500/20"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Titelbildschirm-Wechsel */}
+            <div className="flex flex-col gap-1 text-xs pb-1">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-300 text-[11px]">Titelbildschirm-Wechsel</span>
+                <span className="font-mono text-[11px] text-purple-400">
+                  {config.titleScreenAt !== null ? formatTime(config.titleScreenAt / 1000) : 'Nicht gesetzt'}
+                </span>
+              </div>
+              <div className="flex gap-1.5 mt-1 justify-end">
+                <button
+                  onClick={handleSetTitleScreenAt}
+                  className="text-[9px] uppercase font-bold text-[#00E8FF] bg-[#00E8FF]/10 px-2 py-1 rounded border border-[#00E8FF]/20 hover:bg-[#00E8FF]/20"
+                >
+                  Hier setzen
+                </button>
+                {config.titleScreenAt !== null && (
+                  <button
+                    onClick={() => {
+                      pushHistory({ ...config, titleScreenAt: null });
+                      setStatusMsg('Titelbildschirm-Wechsel zurückgesetzt!');
+                      setTimeout(() => setStatusMsg(null), 1500);
+                    }}
+                    className="text-[9px] uppercase font-bold text-red-400 bg-red-500/10 px-2 py-1 rounded border border-red-500/20 hover:bg-red-500/20"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* ACTIVE OBJECTS / TEXT CUES LIST */}
           <div className="flex-1 flex flex-col min-h-[160px]">
             <h3 className="text-xs font-black tracking-widest text-[#00E8FF] uppercase mb-2">Text-Objekte</h3>
@@ -1070,6 +1178,21 @@ export function IntroEditor({ group, onClose, onSave, settings }: IntroEditorPro
                   <span className="w-2 h-2 rounded bg-orange-500" />
                 </button>
 
+                {/* Logo erscheint */}
+                <button
+                  onClick={() => {
+                    const currentTimeMs = Math.round(currentTime * 1000);
+                    pushHistory({ ...config, logoAppearAt: currentTimeMs });
+                    setShowAddDropdown(false);
+                    setStatusMsg('Logo-Erscheinen gesetzt!');
+                    setTimeout(() => setStatusMsg(null), 1500);
+                  }}
+                  className="text-left py-2 px-2.5 rounded text-xs text-gray-300 hover:bg-white/5 hover:text-white transition-colors flex items-center justify-between"
+                >
+                  <span>Logo erscheint hier (Logo-Erscheinen)</span>
+                  <span className="w-2.5 h-2.5 rounded bg-yellow-400" />
+                </button>
+
                 {/* 3. Title Screen At */}
                 <button
                   onClick={handleSetTitleScreenAt}
@@ -1165,6 +1288,19 @@ export function IntroEditor({ group, onClose, onSave, settings }: IntroEditorPro
                   style={{ left: leftPct }}
                   className="absolute top-0 bottom-0 w-0.5 bg-purple-500 z-15"
                   title={`Titelbildschirm-Wechsel (${formatTime(config.titleScreenAt / 1000)})`}
+                />
+              );
+            })()}
+
+            {/* 4.5. Draw Logo Appear At Vertical line marker (Yellow) */}
+            {config.logoAppearAt !== null && (() => {
+              const logoAppearPct = ((config.logoAppearAt / 1000) - activeMinTime) / activeDuration;
+              const leftPct = `${logoAppearPct * 100}%`;
+              return (
+                <div
+                  style={{ left: leftPct }}
+                  className="absolute top-0 bottom-0 w-0.5 bg-yellow-400 z-15 animate-pulse"
+                  title={`Logo erscheint (${formatTime(config.logoAppearAt / 1000)})`}
                 />
               );
             })()}

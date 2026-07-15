@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Beatmap, HitObject, GameSettings, PlayStats } from '../types';
 import { Volume2, VolumeX, RotateCcw, X, Play, Pause, Square } from 'lucide-react';
+import { KeyloggerUI } from './KeyloggerUI';
 
 interface GameCanvasProps {
   beatmap: Beatmap;
@@ -9,6 +10,11 @@ interface GameCanvasProps {
   onClose: () => void;
   onFinish: (stats: PlayStats) => void;
   spectatingReplayName?: string | null;
+  editorMode?: boolean;
+  editorCurrentTime?: number;
+  editorIsPlaying?: boolean;
+  onEditorTimeUpdate?: (time: number) => void;
+  onEditorStop?: () => void;
 }
 
 interface FloatingHitResult {
@@ -70,6 +76,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   onClose,
   onFinish,
   spectatingReplayName,
+  editorMode = false,
+  editorCurrentTime = 0,
+  editorIsPlaying = false,
+  onEditorTimeUpdate,
+  onEditorStop,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -81,15 +92,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const gainNodeRef = useRef<GainNode | null>(null);
 
   // Timing & Game Loops
-  const isPlayingRef = useRef<boolean>(true);
-  const [isPlayingState, setIsPlayingState] = useState(true);
+  const isPlayingRef = useRef<boolean>(editorMode ? editorIsPlaying : true);
+  const [isPlayingState, setIsPlayingState] = useState(editorMode ? editorIsPlaying : true);
   const [isFailed, setIsFailed] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [isPausedMenuOpen, setIsPausedMenuOpen] = useState(false);
   
   const startTimeRef = useRef<number>(0); // system timestamp corresponding to audio start
-  const playheadMsRef = useRef<number>(0); // current duration in ms
-  const pausedTimeMsRef = useRef<number>(0); // stored duration when paused
+  const playheadMsRef = useRef<number>(editorMode ? editorCurrentTime : 0); // current duration in ms
+  const pausedTimeMsRef = useRef<number>(editorMode ? editorCurrentTime : 0); // stored duration when paused
 
   // Game state
   const statsRef = useRef<PlayStats>({
@@ -122,6 +133,74 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const lastSpinnerAngleRef = useRef<number | null>(null);
   const spinnerTargetGoalRef = useRef<number>(1);
   const [spinnerProgress, setSpinnerProgress] = useState<number | null>(null);
+
+  const resetFutureHitObjects = (targetTime: number) => {
+    hitObjectsStateRef.current.forEach(obj => {
+      if (obj.time >= targetTime) {
+        obj.isHit = false;
+        obj.hitResult = null;
+        obj.activeTicksClicked = [];
+      }
+    });
+    floatersRef.current = floatersRef.current.filter(f => f.timestamp <= targetTime);
+    burstsRef.current = burstsRef.current.filter(b => b.timestamp <= targetTime);
+  };
+
+  // Keep internal hit objects synchronized with editor beatmap additions/deletions/modifications
+  useEffect(() => {
+    if (editorMode) {
+      hitObjectsStateRef.current = beatmap.hitObjects.map(obj => {
+        const existing = hitObjectsStateRef.current.find(o => o.id === obj.id);
+        const isHit = existing ? (playheadMsRef.current < obj.time ? false : existing.isHit) : false;
+        const hitResult = existing ? (playheadMsRef.current < obj.time ? null : existing.hitResult) : null;
+        return {
+          ...obj,
+          isHit,
+          hitResult,
+          activeTicksClicked: existing ? existing.activeTicksClicked || [] : [],
+        };
+      });
+    }
+  }, [beatmap.hitObjects, editorMode]);
+
+  // Sync with editor play/pause state
+  useEffect(() => {
+    if (!editorMode) return;
+
+    if (editorIsPlaying) {
+      if (!isPlayingRef.current) {
+        playAudioTrack();
+      }
+    } else {
+      if (isPlayingRef.current) {
+        pausedTimeMsRef.current = playheadMsRef.current;
+        stopAudioTrack();
+      }
+    }
+  }, [editorIsPlaying, editorMode]);
+
+  // Sync with editor scrubbing/seeking
+  useEffect(() => {
+    if (!editorMode || editorCurrentTime === undefined) return;
+    
+    // Do not sync from editor if GameCanvas is actively playing and driving the time
+    if (isPlayingRef.current) return;
+
+    const timeDiff = Math.abs(playheadMsRef.current - editorCurrentTime);
+    if (timeDiff > 50) {
+      playheadMsRef.current = editorCurrentTime;
+      pausedTimeMsRef.current = editorCurrentTime;
+      
+      resetFutureHitObjects(editorCurrentTime);
+
+      if (videoRef.current) {
+        videoRef.current.currentTime = editorCurrentTime / 1000;
+      }
+      requestAnimationFrame(() => {
+        renderGame();
+      });
+    }
+  }, [editorCurrentTime, editorMode]);
 
   // Colors
   const defaultComboColors = beatmap.colors && beatmap.colors.length > 0
@@ -362,6 +441,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     // Keyboard bindings
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
       const keyLower = e.key.toLowerCase();
       
       if (keyLower === 'escape') {
@@ -423,13 +503,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // Main animation loop
     let animId: number;
     const loop = (timestamp: number) => {
-      if (!lastFrameTimeRef.current) lastFrameTimeRef.current = timestamp;
-      const dt = timestamp - lastFrameTimeRef.current;
-      lastFrameTimeRef.current = timestamp;
+      try {
+        if (!lastFrameTimeRef.current) lastFrameTimeRef.current = timestamp;
+        const dt = timestamp - lastFrameTimeRef.current;
+        lastFrameTimeRef.current = timestamp;
 
-      updateGame(dt);
-      renderGame();
-
+        updateGame(dt);
+        renderGame();
+      } catch (err) {
+        console.error("GameCanvas loop crashed:", err);
+      }
       animId = requestAnimationFrame(loop);
     };
     animId = requestAnimationFrame(loop);
@@ -447,6 +530,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   // Handle aborting/quitting
   const handleClose = () => {
+    if (editorMode) return;
     const wasPlaying = isPlayingState;
     document.title = wasPlaying ? '⏹️yada!' : '⏏️yada!';
     setTimeout(() => {
@@ -469,7 +553,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         window.addEventListener('touchend', resume);
       }
       
-      playAudioTrack();
+      if (!editorMode || editorIsPlaying) {
+        playAudioTrack();
+      } else {
+        isPlayingRef.current = false;
+        setIsPlayingState(false);
+      }
     } catch (error) {
       console.error('Audio initialization error:', error);
     }
@@ -479,6 +568,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     if (!audioCtxRef.current || !audioBuffer) return;
 
     try {
+      if (audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume();
+      }
+
       // Stop old source
       if (sourceNodeRef.current) {
         sourceNodeRef.current.stop();
@@ -617,12 +710,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const autoScaleField = settings.autoScaleField !== false; // Default to true if undefined
     
     // Fit maintaining ratio with extra boundary margin
-    const marginY = settings.useFullSkin ? 60 : 120;
-    const marginX = settings.useFullSkin ? 60 : 100;
+    const marginY = editorMode ? 20 : (settings.useFullSkin ? 60 : 120);
+    const marginX = editorMode ? 20 : (settings.useFullSkin ? 60 : 100);
     const baseScale = Math.min((canvasWidth - marginX) / osuW, (canvasHeight - marginY) / osuH);
     const scale = autoScaleField ? baseScale : (baseScale * uiScale);
     const offsetX = (canvasWidth - osuW * scale) / 2;
-    const offsetY = settings.useFullSkin ? (canvasHeight - osuH * scale) / 2 : (canvasHeight + 10 - osuH * scale) / 2;
+    const offsetY = editorMode ? (canvasHeight - osuH * scale) / 2 : (settings.useFullSkin ? (canvasHeight - osuH * scale) / 2 : (canvasHeight + 10 - osuH * scale) / 2);
 
     return { scale, offsetX, offsetY };
   };
@@ -637,6 +730,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
 
     const playhead = playheadMsRef.current;
+
+    if (editorMode && onEditorTimeUpdate && isPlayingRef.current) {
+      onEditorTimeUpdate(playhead);
+    }
 
     // Sync background video if present
     if (videoRef.current && isPlayingRef.current) {
@@ -656,10 +753,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const curStats = statsRef.current;
     const isBreakTime = hitObjectsStateRef.current.every(obj => playhead < obj.time - 3000 || playhead > (obj.endTime || obj.time) + 1000);
     const passiveHpReduction = isBreakTime ? 0 : (hpDrain * 0.0025) * (dt / 16.6); // heavily reduced drain
-    let newHp = settings.autoPlay ? 100 : curStats.hp - passiveHpReduction;
+    let newHp = (settings.autoPlay || editorMode) ? 100 : curStats.hp - passiveHpReduction;
     
     // Auto Play automation!
-    if (settings.autoPlay) {
+    if (settings.autoPlay || editorMode) {
       hitObjectsStateRef.current.forEach(obj => {
         if (!obj.isHit && obj.hitResult === null) {
           // Autoplay hits exactly on target time
@@ -685,15 +782,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     });
 
     // Update floating score widgets
-    floatersRef.current = floatersRef.current.filter(f => playhead - f.timestamp < 600);
+    floatersRef.current = floatersRef.current.filter(f => {
+      const age = playhead - f.timestamp;
+      return age >= 0 && age < 600;
+    });
 
     // Update swipe trails (touch indicators)
-    trailsRef.current = trailsRef.current.filter(t => Date.now() - t.timestamp < 400);
+    trailsRef.current = trailsRef.current.filter(t => {
+      const age = Date.now() - t.timestamp;
+      return age >= 0 && age < 400;
+    });
 
     // Apply cap to health limits
     newHp = Math.max(0, Math.min(100, newHp));
     
-    if (newHp <= 0 && !settings.autoPlay) {
+    if (newHp <= 0 && !settings.autoPlay && !editorMode) {
       setIsFailed(true);
       stopAudioTrack();
     }
@@ -703,9 +806,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const mapEndTime = lastObject ? (lastObject.endTime || lastObject.time) : beatmap.duration;
     
     if (playhead >= mapEndTime + 1500) {
-      setIsFinished(true);
-      stopAudioTrack();
-      onFinish(statsRef.current);
+      if (editorMode) {
+        if (isPlayingRef.current) {
+          pausedTimeMsRef.current = mapEndTime + 1500;
+          stopAudioTrack();
+          if (onEditorTimeUpdate) onEditorTimeUpdate(mapEndTime + 1500);
+          if (onEditorStop) onEditorStop();
+        }
+      } else {
+        setIsFinished(true);
+        stopAudioTrack();
+        onFinish(statsRef.current);
+      }
     }
 
     // Update live reactive state for health bar
@@ -975,7 +1087,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       activeDesktopKeysRef.current.m2 = true;
     }
 
-    if (!settings.disableClicking) {
+    if (settings.inputDevice === 'pen') {
+      // Ignore M1/M2 for hitting in pen mode
+    } else if (!settings.disableClicking) {
       triggerClick(clickX, clickY);
     }
   };
@@ -1017,6 +1131,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     // Check sliders currently being held down
     const isPressing = settings.touchControls || activeDesktopKeysRef.current.k1 || activeDesktopKeysRef.current.k2 || activeDesktopKeysRef.current.m1 || activeDesktopKeysRef.current.m2 || e.buttons > 0;
+    
+    // Feature: Drag to hit on touch devices
+    if (settings.touchControls && isPressing && !editorMode) {
+      triggerClick(clickX, clickY);
+    }
     
     hitObjectsStateRef.current.forEach(obj => {
       if (obj.type === 'slider' && playhead >= obj.time && playhead <= (obj.endTime || obj.time)) {
@@ -2292,7 +2411,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     });
 
     // Step 5: Draw Hit Burst Effects (Tipp-Effekte / Sparks)
-    const activeBursts = burstsRef.current.filter((b) => playheadMsRef.current - b.timestamp <= 300);
+    const activeBursts = burstsRef.current.filter((b) => playheadMsRef.current - b.timestamp >= 0 && playheadMsRef.current - b.timestamp <= 300);
     burstsRef.current = activeBursts; // Keep only active ones
 
     activeBursts.forEach((b) => {
@@ -2308,7 +2427,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       
       // 1. Glowing expanding shockwave ring
       ctx.beginPath();
-      ctx.arc(bx, by, baseRadius * (1.0 + progress * 1.5), 0, Math.PI * 2);
+      ctx.arc(bx, by, Math.max(0, baseRadius * (1.0 + progress * 1.5)), 0, Math.PI * 2);
       ctx.strokeStyle = b.color;
       ctx.lineWidth = 4 * (1 - progress) * drawScale;
       ctx.globalAlpha = opacity * 0.7;
@@ -2316,7 +2435,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // 2. Translucent outer flare expansion
       ctx.beginPath();
-      ctx.arc(bx, by, baseRadius * (1.1 + progress * 0.8), 0, Math.PI * 2);
+      ctx.arc(bx, by, Math.max(0, baseRadius * (1.1 + progress * 0.8)), 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
       ctx.globalAlpha = opacity * 0.2;
       ctx.fill();
@@ -2391,77 +2510,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.font = '8px var(--font-mono)';
         ctx.fillText(k.desc, startX + boxW / 2, y + 28);
       });
-    }
 
-    // Draw Custom Desktop Cursor
-    if (!settings.touchControls && mousePosRef.current && settings.gameMode !== 'mania') {
-      const mx = mousePosRef.current.x;
-      const my = mousePosRef.current.y;
-      
-      ctx.save();
-      
-      const isPressing = activeDesktopKeysRef.current.k1 || activeDesktopKeysRef.current.k2 || activeDesktopKeysRef.current.m1 || activeDesktopKeysRef.current.m2;
-      
-      if ((skin === 'custom' || skin === 'yada!') && loadedCustomSkinImagesRef.current['cursorUrl'] && loadedCustomSkinImagesRef.current['cursorUrl'].dataset.loaded === 'true') {
-        const cursorImg = loadedCustomSkinImagesRef.current['cursorUrl'];
-        const cSize = (isPressing ? 48 : 44) * (h / 1080); 
-        ctx.drawImage(cursorImg, mx - cSize / 2, my - cSize / 2, cSize, cSize);
-      } else if (skin === 'yada!') {
-        // osu! Lazer 2018 custom cursor replica (glowing magenta/pink outer shield, white crisp center core)
-        const outerRadius = isPressing ? 18 : 14;
-        
-        // 1. Glowing semi-transparent magenta aura
-        ctx.beginPath();
-        ctx.arc(mx, my, outerRadius * 1.3, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 101, 169, 0.25)';
-        ctx.fill();
-
-        // 2. Crisp solid outer neon border
-        ctx.beginPath();
-        ctx.arc(mx, my, outerRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = '#ff65a9';
-        ctx.lineWidth = 2.5;
-        ctx.stroke();
-
-        // 3. Crisp white center dot
-        ctx.beginPath();
-        ctx.arc(mx, my, 5, 0, Math.PI * 2);
-        ctx.fillStyle = '#ffffff';
-        ctx.fill();
-        ctx.strokeStyle = '#ff65a9';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-
-      } else {
-        ctx.beginPath();
-        const outerRadius = isPressing ? 18 : 14;
-        ctx.arc(mx, my, outerRadius, 0, Math.PI * 2);
-        ctx.fillStyle = isPressing ? 'rgba(0, 232, 255, 0.2)' : 'rgba(255, 101, 169, 0.15)';
-        ctx.fill();
-        ctx.strokeStyle = isPressing ? 'rgba(0, 232, 255, 0.8)' : 'rgba(255, 101, 169, 0.7)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        
-        const tickLen = 5;
-        const tickGap = 5;
-        ctx.strokeStyle = isPressing ? 'rgba(0, 232, 255, 0.5)' : 'rgba(255, 101, 169, 0.4)';
-        ctx.lineWidth = 1.5;
-        
-        ctx.beginPath(); ctx.moveTo(mx, my - outerRadius - tickGap); ctx.lineTo(mx, my - outerRadius - tickGap - tickLen); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(mx, my + outerRadius + tickGap); ctx.lineTo(mx, my + outerRadius + tickGap + tickLen); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(mx - outerRadius - tickGap, my); ctx.lineTo(mx - outerRadius - tickGap - tickLen, my); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(mx + outerRadius + tickGap, my); ctx.lineTo(mx + outerRadius + tickGap + tickLen, my); ctx.stroke();
-
-        ctx.beginPath();
-        ctx.arc(mx, my, 5, 0, Math.PI * 2);
-        ctx.fillStyle = '#ffffff';
-        ctx.fill();
-        ctx.strokeStyle = isPressing ? '#00E8FF' : '#FF65A9';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
-      
-      ctx.restore();
     }
   };
 
@@ -2505,7 +2554,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   };
 
   return (
-    <div className="absolute inset-0 z-50 bg-[#0A0A0E] flex flex-col select-none overflow-hidden text-white font-sans">
+    <div className={editorMode ? "absolute inset-0 select-none overflow-hidden text-white font-sans" : "absolute inset-0 z-50 bg-[#0A0A0E] flex flex-col select-none overflow-hidden text-white font-sans"}>
       
       {/* Dynamic inline-styled animations keyframes matching osu!lazer */}
       <style>{`
@@ -2518,7 +2567,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
       `}</style>
 
-      {!settings.useFullSkin && (
+      {!settings.useFullSkin && !editorMode && (
         <>
           {/* Laser HP Bar spanning the absolute top width of the screen */}
           <div className="absolute top-0 left-0 right-0 h-1.5 bg-black/45 z-30">
@@ -2588,11 +2637,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       {/* Gameplay Canvas Container */}
       <div 
         ref={containerRef}
-        className={`flex-1 relative bg-radial from-[#12121b] to-[#08080c] overflow-hidden ${settings.touchControls ? 'cursor-crosshair' : 'cursor-none'}`}
+        className={`flex-1 relative bg-radial from-[#12121b] to-[#08080c] overflow-hidden ${settings.touchControls ? 'cursor-crosshair' : 'cursor-crosshair'}`}
       >
         
         {/* Giant bottom-left combo counter overlay matching osu!lazer */}
-        {!settings.useFullSkin && (
+        {!settings.useFullSkin && !editorMode && (
           <div className="absolute bottom-6 left-8 pointer-events-none z-25 select-none font-sans">
             <div className="flex flex-col items-start bg-black/25 backdrop-blur-sm p-4 rounded-sm border border-white/5">
               <span className="text-[9px] font-black font-mono tracking-widest text-[#FF65A9] uppercase leading-none">COMBO</span>
@@ -2689,16 +2738,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         )}
 
         {/* Autoplay Active Overlay */}
-        {settings.autoPlay && (
+        {settings.autoPlay && !editorMode && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-yellow-500/15 border border-yellow-500/30 text-yellow-500 text-xs font-mono tracking-widest uppercase rounded-full shadow-lg shadow-black/40 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-yellow-400 animate-ping"></span>
             <span>AUTO-PLAY MODUS AKTIV</span>
           </div>
         )}
+
+        {/* Input Device Keylogger */}
+        {settings.keylogger && !editorMode && (
+          <KeyloggerUI 
+            settings={settings}
+            activeKeysRef={activeDesktopKeysRef}
+            mousePosRef={mousePosRef}
+          />
+        )}
       </div>
 
       {/* Fail Overlay Block */}
-      {isFailed && (
+      {isFailed && !editorMode && (
         <div className="absolute inset-0 bg-[#0A0A0C]/95 backdrop-blur-md flex flex-col items-center justify-center text-center p-5 z-55 animate-fade-in">
           <div className="w-16 h-16 rounded-full bg-red-600/10 border border-red-500 flex items-center justify-center text-red-500 mb-4 animate-bounce">
             <Square className="w-8 h-8 fill-red-500" />
@@ -2728,7 +2786,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       )}
 
       {/* Bottom control play panel */}
-      {!settings.useFullSkin && (
+      {!settings.useFullSkin && !editorMode && (
         <div className="h-14 border-t border-white/[0.08] bg-[#0D0D10] flex items-center justify-between px-6 z-10 text-xs text-gray-400 font-mono">
           <div className="flex items-center gap-2">
             <span>STEUERUNG:</span>
@@ -2785,7 +2843,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       )}
 
       {/* Pause Menu Overlay */}
-      {settings.useFullSkin && isPausedMenuOpen && (
+      {settings.useFullSkin && isPausedMenuOpen && !editorMode && (
         <div 
           className="absolute inset-0 bg-black/60 z-50 flex flex-col items-center justify-center"
           style={{

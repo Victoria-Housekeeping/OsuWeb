@@ -435,7 +435,8 @@ export function createSynthwaveTutorial(): { beatmap: Beatmap; audioBuffer: Audi
     sliderMultiplier: 1.5,
     sliderTickRate: 1,
     hitObjects,
-    duration: durationSec * 1000
+    duration: durationSec * 1000,
+      timingPoints: []
   };
 
   // Wait for rendering to complete (block/sync loop or return buffer safely)

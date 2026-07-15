@@ -79,6 +79,7 @@ export default function App() {
   const [customIntroConfig, setCustomIntroConfig] = useState<IntroIniConfig>(DEFAULT_INTRO_INI_CONFIG);
   const [isResolvingCustomIntro, setIsResolvingCustomIntro] = useState<boolean>(false);
   const [isIntroEditorOpen, setIsIntroEditorOpen] = useState<boolean>(false);
+  const [isBeatmapEditorOpen, setIsBeatmapEditorOpen] = useState<boolean>(false);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const bgmSourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -156,8 +157,8 @@ export default function App() {
       return;
     }
 
-    // 3. If intro editor is open, stop any selection BGM to avoid overlapping with editor audio/video preview
-    if (isIntroEditorOpen) {
+    // 3. If intro editor or beatmap editor is open, stop any selection BGM
+    if (isIntroEditorOpen || isBeatmapEditorOpen) {
       stopBgm();
       return;
     }
@@ -224,7 +225,7 @@ export default function App() {
         playBgm('triangles', trianglesBuffer, settings.volume * 0.45);
       }
     }
-  }, [view, selectedGroupIdx, selectedVersionIdx, mapGroups, trianglesBuffer, settings.volume, isIntroEditorOpen]);
+  }, [view, selectedGroupIdx, selectedVersionIdx, mapGroups, trianglesBuffer, settings.volume, isIntroEditorOpen, isBeatmapEditorOpen]);
 
   // Proactive Custom Intro Asset Syncing / Loading
   useEffect(() => {
@@ -451,6 +452,19 @@ export default function App() {
         bgmSourceRef.current = runningSource;
         bgmGainRef.current = runningGain || null;
         currentBgmIdRef.current = targetBgmId;
+
+        // Automatically pre-select the intro song/beatmap group and difficulty version
+        const groupIdx = mapGroups.findIndex(g => g.fileName === settings.customIntroBeatmapId || g.versions.some(v => v.id === settings.customIntroBeatmapId));
+        if (groupIdx !== -1) {
+          setSelectedGroupIdx(groupIdx);
+          const groupObj = mapGroups[groupIdx];
+          const versionIdx = groupObj.versions.findIndex(v => v.id === settings.customIntroBeatmapId);
+          if (versionIdx !== -1) {
+            setSelectedVersionIdx(versionIdx);
+          } else {
+            setSelectedVersionIdx(0);
+          }
+        }
       } else {
         try {
           runningSource.stop();
@@ -555,6 +569,7 @@ export default function App() {
           setSelectedGroupIdx={setSelectedGroupIdx}
           selectedVersionIdx={selectedVersionIdx}
           setSelectedVersionIdx={setSelectedVersionIdx}
+          onEditorToggle={(isOpen) => setIsBeatmapEditorOpen(isOpen)}
           onIntroEditorToggle={setIsIntroEditorOpen}
         />
       )}

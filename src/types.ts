@@ -13,6 +13,14 @@ export interface HitObject {
   isHit?: boolean;
   hitResult?: 300 | 100 | 50 | 0 | null; // 0 = miss
   activeTicksClicked?: number[]; // for slider ticks
+  sliderLength?: number;
+  repeatCount?: number;
+}
+
+export interface TimingPoint {
+  time: number;
+  beatLength: number; // positive = ms per beat, negative = velocity multiplier
+  uninherited: boolean;
 }
 
 export interface Beatmap {
@@ -48,6 +56,7 @@ export interface Beatmap {
   introIniFilename?: string; // resolved path of yadaintro.ini inside the .osz, if present
 
   hitObjects: HitObject[];
+  timingPoints: TimingPoint[];
   duration: number; // in milliseconds
 }
 
@@ -76,6 +85,10 @@ export interface GameSettings {
   uiScale: number; // UI/Playfield scale factor (e.g. 0.8, 1.0, 1.2)
   autoScaleField: boolean; // Auto adaptive playfield container
   audioOffset: number; // Audio latency offset in milliseconds
+  inputDevice?: 'touch' | 'desktop' | 'pen' | 'touchpad';
+  touchpadCalibration?: { scaleX: number, scaleY: number, centerX: number, centerY: number, configured: boolean };
+  keylogger?: boolean;
+  keyloggerSize?: number;
   skinPreset: string;
   customSkinColors?: {
     comboColors?: string[];
